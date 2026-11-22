@@ -21,3 +21,4 @@ komiic-probe*.json
 # Local reference screenshots and exported project archive
 /IMG_*.PNG
 /Komiic-iOS.zip
+/Komiic-*-source.zip

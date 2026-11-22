@@ -73,12 +73,19 @@ struct ComicCard: View {
 
 struct ComicGrid: View {
     let comics: [Comic]
+    var onSelect: ((Comic) -> Void)? = nil
     @Environment(\.horizontalSizeClass) private var sizeClass
     var body: some View {
         LazyVGrid(columns: [GridItem(.adaptive(minimum: sizeClass == .regular ? 150 : 105,
                                              maximum: sizeClass == .regular ? 220 : 170), spacing: 12)], spacing: 18) {
             ForEach(comics) { comic in
-                NavigationLink(value: comic) { ComicCard(comic: comic) }
+                Group {
+                    if let onSelect {
+                        Button { onSelect(comic) } label: { ComicCard(comic: comic) }
+                    } else {
+                        NavigationLink(value: comic) { ComicCard(comic: comic) }
+                    }
+                }
                     .buttonStyle(.plain)
                     .contextMenu {
                         ComicContextMenu(comic: comic)

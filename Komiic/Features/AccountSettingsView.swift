@@ -170,7 +170,7 @@ struct SettingsView: View {
                 NavigationLink { NetworkDiagnosticsView() } label: { Label("连接检测与重新连线", systemImage: "network") }
             }
             Section("关于") {
-                LabeledContent("Komiic for iOS", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "2.0")
+                LabeledContent("Komiic for iOS", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "3.0")
                 Link("访问 Komiic 官网", destination: URL(string: "https://komiic.cc")!)
                 Text("独立 SwiftUI 客户端，与 Komiic 官方无隶属关系。")
                     .font(.caption).foregroundStyle(.secondary)

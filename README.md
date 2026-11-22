@@ -1,8 +1,8 @@
-# Komiic for iOS 2.0
+# Komiic for iOS 3.0
 
 基于提供的 8 张截图实现的原生 SwiftUI 漫画客户端，适用于 iOS / iPadOS 17 及以上系统。项目使用 Apple 系统框架，无第三方运行时依赖。
 
-当前版本为 **2.0（build 2）**，本次调整导航、首页分类布局和页面切换动画，其他功能沿用现有实现。
+当前源码版本为 **3.0（build 3）**。本次在 2.0 基础上修复刷新和搜索导航，增加作者作品入口、色情程度、卷话四列目录、按真实阅读记录折叠章节及右下角继续阅读；保留现有 Liquid Glass 导航和详情顶部布局。
 
 公开源码：[hahahalucas/Komiic](https://github.com/hahahalucas/Komiic)。
 
@@ -23,15 +23,19 @@ iPhone 与 iPad 均保留首页、喜爱、资料库三个标签，资料库包�
 
 首页顶部的最近更新、当月最热、推荐漫画、最近阅读四个主分类等宽铺满一行；最近更新内保留最近更新 / 最近上架切换。内容区可按“最近更新 → 最近上架 → 当月最热 → 推荐漫画 → 最近阅读”的顺序左右滑动，页面随手势移动，点击分类也有切换动画。
 
-2.0 已完成 Xcode 26.6 设备版编译，交付包为 `Komiic-2.0-iPhone-iPad-unsigned.ipa`（822,136 字节）。可从[成功构建的产物](https://github.com/hahahalucas/Komiic/actions/runs/44991028791/artifacts/14742335404)获取；云端包内文件使用默认名称，项目根目录的交付副本加入了版本号。它支持 iPhone 与 iPad，已在本机复核为真实 arm64 iOS 设备包，安装前需要自行签名。旧的 `Komiic-iPhone-iPad-unsigned.ipa` 仍是 0.1.0 历史构建。完整记录与 SHA-256 见 [验证记录](docs/Verification.md)。
+3.0 当前已完成源码修改和本地静态检查，Mac 云端编译与测试待执行，尚未生成 3.0 IPA。根目录的 `Komiic-2.0-iPhone-iPad-unsigned.ipa`（822,136 字节）仍是已验证的 2.0 历史交付包，[对应构建产物](https://github.com/hahahalucas/Komiic/actions/runs/44991028791/artifacts/14742335404)不代表 3.0。无版本号的 `Komiic-iPhone-iPad-unsigned.ipa` 仍是 0.1.0 历史构建。完整记录与 SHA-256 见 [验证记录](docs/Verification.md)。
+
+3.0 每次下拉刷新都会重新请求第一页，保留列表内容并显示加载；没有更新时也正常完成刷新，失败后可重试。搜索入口立即显示搜索栏，选择结果后直接进入漫画，返回时回到首页。
+
+详情中的作者姓名保留原位置，可点击查看该作者的全部漫画；故事简介下增加色情程度和说明。目录按卷、话等类型分开，每行四个方块；只将实际读过的章节标暗。重新打开详情时，以最后阅读的章节为定位点，最多显示相邻的两个已读暗格；未读间隔会中断相邻关系，较早章节及其余已读章节折叠进眼睛方块，点击可展开。例如只读第 5 话不会标暗第 1–4 话；第 11 话未读而第 12 话已读时，仅保留第 12 话的暗格。右下角玻璃继续阅读按钮按最后保存的章节和页码恢复阅读。
 
 ## 已实现功能
 
 | 入口 | 功能 |
 | --- | --- |
-| 首页 | 最近更新、最近上架、当月最热、推荐漫画、最近阅读五页滑动切换，内容分级筛选、下拉刷新、分页加载 |
-| 搜索 | 关键词搜索、输入防抖、展示完整搜索结果、错误状态 |
-| 漫画详情 | 封面、作者、简介、分类、浏览及收藏数量、章节目录、章节排序、继续阅读、下载、分享 |
+| 首页 | 最近更新、最近上架、当月最热、推荐漫画、最近阅读五页滑动切换，内容分级筛选、每次下拉重新请求、分页加载 |
+| 搜索 | 立即展开搜索栏、关键词搜索、输入防抖、完整搜索结果、进入漫画后返回首页、错误状态 |
+| 漫画详情 | 封面、作者作品链接、简介、色情程度、分类、浏览及收藏数量、卷话四列目录、真实已读标记及折叠、章节排序、右下角继续阅读、下载、分享 |
 | 喜爱 | 本机喜爱管理，按未读、在读、本章已读筛选 |
 | 书签 | 保存具体章节和页码，从书签继续阅读、删除书签 |
 | 书柜 | 创建、重命名、删除，加入及移出漫画，四宫格封面 |
@@ -58,7 +62,7 @@ iPhone 与 iPad 均保留首页、喜爱、资料库三个标签，资料库包�
 
 默认站点为 [Komiic 官网](https://komiic.cc/)，通过其第一方网页当前使用的 GraphQL 接口 `https://komiic.cc/api/query` 请求漫画和章节。图片使用官网的 `getImageTicket` / `X-Image-Ticket` 流程，过期后刷新一次；图片 CDN 请求不携带账号 Cookie。登录在 `WKWebView` 中完成，App 使用 Cookie 会话，不直接保存账号密码。
 
-2026-11-18 已对公开列表、搜索、详情、章节、页面列表、图片票据和一张实际 WebP 图片进行 HTTP 验证，记录在 [`docs/live-api.json`](docs/live-api.json)。这些是网站内部接口，可能随官网变更；登录后的账号流程仍需在 iOS 上实测。图片访问受官网权限、每日额度和限流约束，App 会显示对应错误。
+2026-11-18 已对公开列表、搜索、详情、章节、页面列表、图片票据和一张实际 WebP 图片进行 HTTP 验证，记录在 [`docs/live-api.json`](docs/live-api.json)。2026-11-22 又核对官网当前脚本并实际验证作者作品、作者搜索和色情程度字段，见 [3.0 验证记录](docs/Verification.md)。这些是网站内部接口，可能随官网变更；登录后的账号流程仍需在 iOS 上实测。图片访问受官网权限、每日额度和限流约束，App 会显示对应错误。
 
 本项目为独立客户端，与 Komiic 官方无隶属关系。
 
@@ -66,7 +70,7 @@ iPhone 与 iPad 均保留首页、喜爱、资料库三个标签，资料库包�
 
 ## 验证
 
-本地开发环境为 Windows。2026-11-22，2.0 已通过本地工程结构、共享 scheme、资源文件及全部 21 个 Swift 源文件的语法检查，`git diff --check` 通过。[设备版构建](https://github.com/hahahalucas/Komiic/actions/runs/44991028791)已成功生成并校验交付 IPA；该任务使用 `--skip-tests`。同一 App 源码的[独立完整流程](https://github.com/hahahalucas/Komiic/actions/runs/44989974389)也已成功：iPhone、iPad 各 18 项测试通过、零失败，生成两种模拟器截图并完成设备版编译；[完整验证产物](https://github.com/hahahalucas/Komiic/actions/runs/44989974389/artifacts/14742196424)包含测试结果、截图和日志。实际滑动等界面交互和真机安装尚未验收。
+本地开发环境为 Windows。2026-11-22，3.0 已通过本地工程结构、共享 scheme、资源文件及全部 26 个 Swift 源文件的语法检查，`git diff --check` 通过。当前含 36 项 XCTest 源码，尚未执行 3.0 的 Xcode 编译、XCTest 或模拟器交互验收；计划在 `codex/komiic-3.0` 独立分支复用现有 Mac 云端流程验证。2.0 的已成功构建和各设备 18 项测试结果保留在 [历史验证记录](docs/Verification.md)，不作为 3.0 通过的证据。
 
 本地结构检查：
 
@@ -94,7 +98,7 @@ xcodebuild -project Komiic.xcodeproj -scheme Komiic -showdestinations
 xcodebuild -project Komiic.xcodeproj -scheme Komiic -destination 'platform=iOS Simulator,name=iPhone 16' CODE_SIGNING_ALLOWED=NO test
 ```
 
-18 个单元测试覆盖响应解码、GraphQL/HTTP 错误、搜索结果不被截断、图片票据刷新、并发请求共用登录会话刷新、资料库持久化和恢复、离线文件恢复及无网读取。测试均使用隔离目录或模拟网络，不需要 Komiic 账号。详细状态及设备验收步骤见 [`docs/Verification.md`](docs/Verification.md)。
+36 项单元测试源码覆盖响应解码、旧存档兼容、作者 ID 与分级、作者全部作品、GraphQL/HTTP 错误、完整搜索结果、图片票据和会话刷新、资料库持久化、跳章及最后阅读位置、目录折叠、反复刷新与取消、离线恢复及无网读取。测试均使用隔离目录或模拟网络，不需要 Komiic 账号。当前静态检查不等同于 XCTest 通过，详细状态及设备验收步骤见 [`docs/Verification.md`](docs/Verification.md)。
 
 ## 主要文件
 

@@ -50,6 +50,28 @@ final class LibraryStoreTests: XCTestCase {
         XCTAssertEqual(store.progress(for: comic.id)?.page, 4)
     }
 
+    func testJumpedReadChaptersAndLastRevisitedChapterSurviveReload() throws {
+        let url = try directory()
+        let comic = Comic(id: "comic", title: "测试")
+        let fifth = Chapter(id: "fifth", serial: "5")
+        let twelfth = Chapter(id: "twelfth", serial: "12")
+        let store = LibraryStore(directoryURL: url)
+        store.recordProgress(comic: comic, chapter: twelfth, page: 8, totalPages: 20)
+        store.recordProgress(comic: comic, chapter: fifth, page: 3, totalPages: 20)
+
+        let restored = LibraryStore(directoryURL: url)
+        XCTAssertEqual(restored.readChapterIDs, [fifth.id, twelfth.id])
+        XCTAssertTrue(restored.isChapterRead(fifth.id))
+        XCTAssertTrue(restored.isChapterRead(twelfth.id))
+        XCTAssertFalse(restored.isChapterRead("eleventh"))
+        XCTAssertEqual(restored.progress(for: comic.id)?.chapter.id, fifth.id)
+        XCTAssertEqual(restored.progress(for: comic.id)?.page, 3)
+        restored.clearHistory()
+        XCTAssertTrue(restored.readChapterIDs.isEmpty)
+        XCTAssertNil(LibraryStore(directoryURL: url).progress(for: comic.id))
+        XCTAssertFalse(LibraryStore(directoryURL: url).isChapterRead(fifth.id))
+    }
+
     func testShelfNamesRejectEmptyDuplicateAndOverlongNames() throws {
         let store = LibraryStore(directoryURL: try directory())
         XCTAssertNil(store.createShelf(name: "   "))

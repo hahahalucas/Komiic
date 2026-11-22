@@ -21,12 +21,17 @@ private enum LibrarySection: String {
     case bookmarks, shelves
 }
 
+private enum SearchRoute: Hashable {
+    case search
+}
+
 struct RootView: View {
     @EnvironmentObject private var library: LibraryStore
     @EnvironmentObject private var downloads: DownloadStore
     @EnvironmentObject private var settings: ReaderSettings
     @Environment(\.scenePhase) private var scenePhase
     @State private var selected: AppTab = .home
+    @State private var paths: [AppTab: NavigationPath] = [:]
     @State private var librarySection: LibrarySection = .bookmarks
     @State private var account = false
     @State private var notifications = false
@@ -95,6 +100,14 @@ struct RootView: View {
     private var completedIDs: Set<String> { Set(downloads.items.filter { $0.status == .completed }.map(\.id)) }
     private func screen(_ tab: AppTab) -> some View {
         TabRootScreen(tab: tab, librarySection: $librarySection,
+                      path: Binding(get: { paths[tab] ?? NavigationPath() }, set: { paths[tab] = $0 }),
+                      openSearchResult: { comic in
+                          paths[tab] = NavigationPath()
+                          var homePath = NavigationPath()
+                          homePath.append(comic)
+                          paths[.home] = homePath
+                          selected = .home
+                      },
                       showAccount: { account = true }, showNotifications: { notifications = true })
     }
 }
@@ -102,10 +115,10 @@ struct RootView: View {
 private struct TabRootScreen: View {
     let tab: AppTab
     @Binding var librarySection: LibrarySection
+    @Binding var path: NavigationPath
+    let openSearchResult: (Comic) -> Void
     let showAccount: () -> Void
     let showNotifications: () -> Void
-    @State private var path: [Comic] = []
-    @State private var search = false
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -116,14 +129,18 @@ private struct TabRootScreen: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItemGroup(placement: .topBarTrailing) {
-                        Button { search = true } label: { Image(systemName: "magnifyingglass") }.accessibilityLabel("搜索漫画")
+                        NavigationLink(value: SearchRoute.search) { Image(systemName: "magnifyingglass") }.accessibilityLabel("搜索漫画")
                         Button(action: showNotifications) { Image(systemName: "bell") }.accessibilityLabel("阅读动态")
                         Button(action: showAccount) { Image(systemName: "person.crop.circle") }.accessibilityLabel("账号与设置")
                     }
                 }
                 .navigationDestination(for: Comic.self) { ComicDetailView(comic: $0) }
-                .navigationDestination(isPresented: $search) { SearchView() }
+                .navigationDestination(for: ComicAuthor.self) { AuthorView(author: $0) }
+                .navigationDestination(for: SearchRoute.self) { _ in
+                    SearchView(onSelect: openSearchResult)
+                }
         }
+        .environment(\.openAuthor) { path.append($0) }
     }
 
     @ViewBuilder private var content: some View {

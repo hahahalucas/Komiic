@@ -86,10 +86,26 @@ struct KomiicAPI: Sendable {
     }
 
     func comic(id: String) async throws -> Comic {
-        let query = "query comicById($comicId: ID!) { comicById(comicId: $comicId) { \(Self.comicFields) description } }"
+        let query = "query comicById($comicId: ID!) { comicById(comicId: $comicId) { \(Self.comicFields) description sexyLevel sexyLevelReason } }"
         let data: ComicResult = try await perform("comicById", query: query, variables: ["comicId": id])
         guard let comic = data.comicById else { throw KomiicError.notFound }
         return normalized(comic)
+    }
+
+    /// The first-party author page returns the author's complete collection without pagination.
+    func comics(authorID: String) async throws -> [Comic] {
+        let query = "query comicsByAuthor($authorId: ID!) { comics: getComicsByAuthor(authorId: $authorId) { \(Self.comicFields) } }"
+        let data: ComicList = try await perform("comicsByAuthor", query: query, variables: ["authorId": authorID])
+        return data.comics.compactMap { $0 }.map(normalized)
+    }
+
+    /// Resolves legacy local records that saved author names without their identifiers.
+    func searchAuthors(keyword: String) async throws -> [ComicAuthor] {
+        let keyword = keyword.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !keyword.isEmpty else { return [] }
+        let query = "query searchAuthors($keyword: String!) { searchComicsAndAuthors(keyword: $keyword) { authors { id name } } }"
+        let data: AuthorSearchResult = try await perform("searchAuthors", query: query, variables: ["keyword": keyword])
+        return (data.searchComicsAndAuthors.authors ?? []).compactMap { $0 }
     }
 
     func chapters(comicID: String) async throws -> [Chapter] {
@@ -275,6 +291,10 @@ private struct ComicList: Decodable { let comics: [Comic?] }
 private struct SearchResult: Decodable {
     let searchComicsAndAuthors: Matches
     struct Matches: Decodable { let comics: [Comic?]? }
+}
+private struct AuthorSearchResult: Decodable {
+    let searchComicsAndAuthors: Matches
+    struct Matches: Decodable { let authors: [ComicAuthor?]? }
 }
 private struct ComicResult: Decodable { let comicById: Comic? }
 private struct ChapterResult: Decodable { let chaptersByComicId: [Chapter?] }

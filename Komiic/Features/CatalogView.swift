@@ -9,33 +9,58 @@ final class CatalogModel: ObservableObject {
     @Published private(set) var loadedFilter: ContentFilter?
     private var generation = UUID()
     private var offset = 0
-    private let api = KomiicAPI()
+    private let fetchComics: (CatalogFeed, Int, ContentFilter) async throws -> [Comic]
+    private var requestTask: Task<[Comic], Error>?
+
+    init(fetchComics: @escaping (CatalogFeed, Int, ContentFilter) async throws -> [Comic] = { feed, offset, filter in
+        try await KomiicAPI().catalog(feed: feed, offset: offset, filter: filter)
+    }) {
+        self.fetchComics = fetchComics
+    }
 
     func load(feed: CatalogFeed, filter: ContentFilter, reset: Bool) async {
         if reset {
             generation = UUID()
-            offset = 0
-            comics = []
-            hasMore = true
-            loadedFilter = nil
+            requestTask?.cancel()
+            // Keep a loaded page in place while refreshing, including when nothing changed.
+            if loadedFilter != filter {
+                offset = 0
+                comics = []
+                hasMore = true
+                loadedFilter = nil
+            }
         } else if loading || !hasMore { return }
         let requestID = generation
+        let requestedOffset = reset ? 0 : offset
         loading = true
         error = nil
-        defer { if generation == requestID { loading = false } }
-        do {
-            let results = try await api.catalog(feed: feed, offset: offset, filter: filter)
+        // A collapsing refresh control or a pager transition must not cancel the request.
+        // A newer reset explicitly cancels and supersedes it instead.
+        let request = Task {
+            let results = try await fetchComics(feed, requestedOffset, filter)
             try Task.checkCancellation()
+            return results
+        }
+        requestTask = request
+        defer {
+            if generation == requestID {
+                loading = false
+                requestTask = nil
+            }
+        }
+        do {
+            let results = try await request.value
             guard generation == requestID else { return }
-            offset += results.count
-            var ids = Set(comics.map(\.id))
+            offset = requestedOffset + results.count
+            var ids = reset ? Set<String>() : Set(comics.map(\.id))
             let newComics = results.filter { ids.insert($0.id).inserted }
-            comics.append(contentsOf: newComics)
+            if reset { comics = newComics }
+            else { comics.append(contentsOf: newComics) }
             hasMore = !results.isEmpty && !newComics.isEmpty
             loadedFilter = filter
-        } catch is CancellationError {
-        } catch let urlError as URLError where urlError.code == .cancelled {
         } catch {
+            // Only superseded requests are ignored. An active request that the network
+            // cancels still needs a retry state instead of an endless initial spinner.
             if generation == requestID { self.error = error.localizedDescription }
         }
     }
@@ -170,9 +195,10 @@ private struct CatalogFeedPage: View {
             .frame(maxWidth: 1_400)
             .frame(maxWidth: .infinity)
         }
+        .scrollBounceBehavior(.always, axes: .vertical)
         .refreshable { await reload() }
         .task(id: active ? filter : nil) {
-            guard active, model.loadedFilter != filter else { return }
+            guard !Task.isCancelled, active, model.loadedFilter != filter else { return }
             await reload()
         }
     }
@@ -208,7 +234,9 @@ private struct FilterSheet: View {
 }
 
 struct SearchView: View {
+    let onSelect: (Comic) -> Void
     @State private var keyword = ""
+    @State private var searchPresented = false
     @State private var comics: [Comic] = []
     @State private var loading = false
     @State private var error: String?
@@ -223,12 +251,14 @@ struct SearchView: View {
             } else if comics.isEmpty && !loading {
                 EmptyState(symbol: "text.magnifyingglass", title: "没有找到相关漫画", message: "换一个名称或更短的关键词试试。")
             } else {
-                ComicGrid(comics: comics.filter { !library.blockedComicIDs.contains($0.id) }).padding(14)
+                ComicGrid(comics: comics.filter { !library.blockedComicIDs.contains($0.id) }, onSelect: onSelect).padding(14)
             }
         }
         .background(KomiicTheme.canvas)
         .navigationTitle("搜索")
-        .searchable(text: $keyword, prompt: "漫画名 / 作者")
+        .searchable(text: $keyword, isPresented: $searchPresented,
+                    placement: .navigationBarDrawer(displayMode: .always), prompt: "漫画名 / 作者")
+        .onAppear { searchPresented = true }
         .task(id: keyword) {
             comics = []; error = nil
             let query = keyword.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -241,7 +271,10 @@ struct SearchView: View {
                 comics = result
             } catch is CancellationError { return
             } catch let urlError as URLError where urlError.code == .cancelled { return
-            } catch { self.error = error.localizedDescription }
+            } catch {
+                guard !Task.isCancelled else { return }
+                self.error = error.localizedDescription
+            }
             loading = false
         }
     }

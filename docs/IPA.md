@@ -4,7 +4,9 @@
 
 iPad 不强制全屏，声明全部四个方向以支持系统多任务与可变窗口。窗口中的方向和大小以 iPadOS 的规则为准；阅读方向偏好不能覆盖系统对窗口场景的限制。
 
-2.0 已在用户授权的 [Mac 云端设备版任务](https://github.com/hahahalucas/Komiic/actions/runs/44991028791)中完成编译，项目根目录已保存交付副本 `Komiic-2.0-iPhone-iPad-unsigned.ipa`（版本 2.0、build 2，822,136 字节）。[构建产物](https://github.com/hahahalucas/Komiic/actions/runs/44991028791/artifacts/14742335404)内的 IPA 使用默认文件名；下载后另存为带版本号的交付文件。设备版任务使用 `--skip-tests`，Xcode 26.6 / iOS SDK 26.5 编译与云端、本机 IPA 校验均通过。
+当前源码为 **3.0（build 3）**，已完成本地静态检查，Mac 云端编译与 36 项 XCTest 待执行。计划在 `codex/komiic-3.0` 独立分支复用本页构建流程；当前尚无已生成或校验的 3.0 IPA。生成后应核对包内版本与 build，再另存为 `Komiic-3.0-iPhone-iPad-unsigned.ipa`，不能将旧包改名作为新版本交付。
+
+以下为 **2.0 历史构建记录**。2.0 已在 [Mac 云端设备版任务](https://github.com/hahahalucas/Komiic/actions/runs/44991028791)中完成编译，项目根目录已保存交付副本 `Komiic-2.0-iPhone-iPad-unsigned.ipa`（版本 2.0、build 2，822,136 字节）。[构建产物](https://github.com/hahahalucas/Komiic/actions/runs/44991028791/artifacts/14742335404)内的 IPA 使用默认文件名；下载后另存为带版本号的交付文件。设备版任务使用 `--skip-tests`，Xcode 26.6 / iOS SDK 26.5 编译与云端、本机 IPA 校验均通过。
 
 同一 App 源码的[独立完整流程](https://github.com/hahahalucas/Komiic/actions/runs/44989974389)也已成功：iPhone 与 iPad 各 18 项测试通过、零失败，生成两种模拟器截图并完成设备版编译。[完整验证产物](https://github.com/hahahalucas/Komiic/actions/runs/44989974389/artifacts/14742196424)包含测试结果、截图和日志，本机证据位置为 `build/verified-artifacts-2.0/`。交付包仍来自上述设备版任务；两次构建的 App 源码完全一致，仅构建工作流有调整。未使用用户证书，安装前需要自行签名。实际滑动交互及真机安装尚未验收。源码、构建提交和 SHA-256 见[验证记录](Verification.md)。根目录原有的无版本号 IPA 是 0.1.0 历史包。
 

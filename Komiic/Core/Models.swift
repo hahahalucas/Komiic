@@ -30,6 +30,20 @@ enum ContentFilter: Int, CaseIterable, Identifiable, Codable, Sendable {
     }
 }
 
+struct ComicAuthor: Codable, Hashable, Identifiable, Sendable {
+    var id: String
+    var name: String
+
+    init(id: String, name: String) { self.id = id; self.name = name }
+
+    enum CodingKeys: String, CodingKey { case id, name }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.requiredString(.id)
+        name = try c.decode(String.self, forKey: .name)
+    }
+}
+
 struct Comic: Codable, Hashable, Identifiable, Sendable {
     var id: String
     var title: String
@@ -37,6 +51,7 @@ struct Comic: Codable, Hashable, Identifiable, Sendable {
     var status: String
     var description: String?
     var authors: [String]
+    var authorDetails: [ComicAuthor]
     var categories: [String]
     var views: Int
     var monthViews: Int
@@ -44,21 +59,27 @@ struct Comic: Codable, Hashable, Identifiable, Sendable {
     var lastChapterUpdate: String?
     var lastBookUpdate: String?
     var dateUpdated: String?
+    var sexyLevel: Int?
+    var sexyLevelReason: String?
 
     init(id: String, title: String, imageUrl: URL? = nil, status: String = "ONGOING",
          description: String? = nil, authors: [String] = [], categories: [String] = [],
          views: Int = 0, monthViews: Int = 0, favoriteCount: Int = 0,
-         lastChapterUpdate: String? = nil, lastBookUpdate: String? = nil, dateUpdated: String? = nil) {
+         lastChapterUpdate: String? = nil, lastBookUpdate: String? = nil, dateUpdated: String? = nil,
+         authorDetails: [ComicAuthor] = [], sexyLevel: Int? = nil, sexyLevelReason: String? = nil) {
         self.id = id; self.title = title; self.imageUrl = imageUrl; self.status = status
         self.description = description; self.authors = authors; self.categories = categories
         self.views = views; self.monthViews = monthViews; self.favoriteCount = favoriteCount
         self.lastChapterUpdate = lastChapterUpdate; self.lastBookUpdate = lastBookUpdate
         self.dateUpdated = dateUpdated
+        self.authorDetails = authorDetails
+        if self.authors.isEmpty { self.authors = authorDetails.map(\.name) }
+        self.sexyLevel = sexyLevel; self.sexyLevelReason = sexyLevelReason
     }
 
     enum CodingKeys: String, CodingKey {
         case id, title, imageUrl, status, description, authors, categories, views, monthViews
-        case favoriteCount, lastChapterUpdate, lastBookUpdate, dateUpdated
+        case favoriteCount, lastChapterUpdate, lastBookUpdate, dateUpdated, authorDetails, sexyLevel, sexyLevelReason
     }
 
     init(from decoder: Decoder) throws {
@@ -69,6 +90,9 @@ struct Comic: Codable, Hashable, Identifiable, Sendable {
         status = c.flexibleString(.status) ?? "ONGOING"
         description = c.flexibleString(.description)
         authors = c.names(.authors)
+        authorDetails = (try? c.decode([ComicAuthor].self, forKey: .authors))
+            ?? (try? c.decode([ComicAuthor].self, forKey: .authorDetails)) ?? []
+        if authors.isEmpty { authors = authorDetails.map(\.name) }
         categories = c.names(.categories)
         views = c.flexibleInt(.views)
         monthViews = c.flexibleInt(.monthViews)
@@ -76,6 +100,8 @@ struct Comic: Codable, Hashable, Identifiable, Sendable {
         lastChapterUpdate = c.flexibleString(.lastChapterUpdate)
         lastBookUpdate = c.flexibleString(.lastBookUpdate)
         dateUpdated = c.flexibleString(.dateUpdated)
+        sexyLevel = c.flexibleString(.sexyLevel).flatMap(Int.init)
+        sexyLevelReason = c.flexibleString(.sexyLevelReason)
     }
 
 }

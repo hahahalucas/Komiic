@@ -75,6 +75,62 @@ final class KomiicAPITests: XCTestCase {
         catch { XCTFail("Unexpected error: \(error)") }
     }
 
+    func testAuthorWorksUsesAuthorIdentifierAndKeepsAllResults() async throws {
+        let requests = LockedBox<[URLRequest]>([])
+        var comics: [Any] = [NSNull()]
+        comics.append(contentsOf: (0..<47).map { index -> [String: Any] in
+            ["id": String(index), "title": "作品 \(index)", "authors": [["id": "7", "name": "作者"]]]
+        })
+        let data = try JSONSerialization.data(withJSONObject: ["data": ["comics": comics]])
+        StubURLProtocol.handler = { request in
+            requests.update { $0.append(request) }
+            return (200, "application/json", data)
+        }
+        let works = try await api.comics(authorID: "7")
+        XCTAssertEqual(works.count, 47)
+        XCTAssertEqual(works.last?.id, "46")
+        XCTAssertEqual(works.first?.authorDetails, [ComicAuthor(id: "7", name: "作者")])
+        let request = try XCTUnwrap(requests.value.first)
+        let payload = try XCTUnwrap(try JSONSerialization.jsonObject(with: requestBody(request)) as? [String: Any])
+        XCTAssertEqual(payload["operationName"] as? String, "comicsByAuthor")
+        XCTAssertTrue((payload["query"] as? String)?.contains("getComicsByAuthor(authorId: $authorId)") == true)
+        let variables = try XCTUnwrap(payload["variables"] as? [String: Any])
+        XCTAssertEqual(variables["authorId"] as? String, "7")
+    }
+
+    func testComicDetailRequestsRatingAndRetainsAuthorIdentifiers() async throws {
+        let requests = LockedBox<[URLRequest]>([])
+        StubURLProtocol.handler = { request in
+            requests.update { $0.append(request) }
+            return (200, "application/json", Data(#"{"data":{"comicById":{"id":"1","title":"漫画","authors":[{"id":"7","name":"作者"}],"sexyLevel":3,"sexyLevelReason":"分级说明"}}}"#.utf8))
+        }
+        let comic = try await api.comic(id: "1")
+        XCTAssertEqual(comic.sexyLevel, 3)
+        XCTAssertEqual(comic.sexyLevelReason, "分级说明")
+        XCTAssertEqual(comic.authorDetails, [ComicAuthor(id: "7", name: "作者")])
+        let request = try XCTUnwrap(requests.value.first)
+        let payload = try XCTUnwrap(try JSONSerialization.jsonObject(with: requestBody(request)) as? [String: Any])
+        let query = try XCTUnwrap(payload["query"] as? String)
+        XCTAssertTrue(query.contains("description sexyLevel sexyLevelReason"))
+    }
+
+    func testAuthorSearchTrimsKeywordAndFiltersNullRows() async throws {
+        let requests = LockedBox<[URLRequest]>([])
+        StubURLProtocol.handler = { request in
+            requests.update { $0.append(request) }
+            return (200, "application/json", Data(#"{"data":{"searchComicsAndAuthors":{"authors":[null,{"id":"7","name":"作者"}]}}}"#.utf8))
+        }
+        let authors = try await api.searchAuthors(keyword: "  作者  ")
+        XCTAssertEqual(authors, [ComicAuthor(id: "7", name: "作者")])
+        let request = try XCTUnwrap(requests.value.first)
+        let payload = try XCTUnwrap(try JSONSerialization.jsonObject(with: requestBody(request)) as? [String: Any])
+        let variables = try XCTUnwrap(payload["variables"] as? [String: Any])
+        XCTAssertEqual(variables["keyword"] as? String, "作者")
+        let empty = try await api.searchAuthors(keyword: " \n ")
+        XCTAssertTrue(empty.isEmpty)
+        XCTAssertEqual(requests.value.count, 1)
+    }
+
     func testInvalidJSONDoesNotBecomeAnEmptySuccess() async {
         StubURLProtocol.handler = { _ in (200, "text/html", Data("<html>unavailable</html>".utf8)) }
         do {

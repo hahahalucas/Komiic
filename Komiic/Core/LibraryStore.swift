@@ -46,7 +46,7 @@ final class LibraryStore: ObservableObject {
     @Published private(set) var history: [ReadingProgress] = []
     @Published private(set) var blockedComicIDs: Set<String> = []
     @Published var lastError: String?
-    private var readChapterIDs: Set<String> = []
+    @Published private(set) var readChapterIDs: Set<String> = []
     private var canPersist = true
     private let fileURL: URL
     private let fileManager = FileManager.default
@@ -88,6 +88,7 @@ final class LibraryStore: ObservableObject {
 
     func isFavorite(_ comic: Comic) -> Bool { favorites.contains { $0.id == comic.id } }
     func isBlocked(_ comic: Comic) -> Bool { blockedComicIDs.contains(comic.id) }
+    func isChapterRead(_ chapterID: String) -> Bool { readChapterIDs.contains(chapterID) }
 
     func toggleFavorite(_ comic: Comic) {
         if isFavorite(comic) { favorites.removeAll { $0.id == comic.id } }

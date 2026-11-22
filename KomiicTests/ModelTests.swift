@@ -7,10 +7,33 @@ final class ModelTests: XCTestCase {
         let comic = try JSONDecoder().decode(Comic.self, from: data)
         XCTAssertEqual(comic.id, "42")
         XCTAssertEqual(comic.authors, ["作者"])
+        XCTAssertEqual(comic.authorDetails, [ComicAuthor(id: "7", name: "作者")])
         XCTAssertEqual(comic.categories, ["冒险"])
         XCTAssertEqual(comic.views, 1200)
         XCTAssertEqual(comic.lastChapterUpdate, "12.5")
         XCTAssertEqual(try JSONDecoder().decode(Comic.self, from: JSONEncoder().encode(comic)), comic)
+    }
+
+    func testLegacyComicArchiveWithoutAuthorIDsOrRatingRemainsReadable() throws {
+        let data = Data(#"{"id":"42","title":"旧记录","authors":["作者"],"categories":["冒险"]}"#.utf8)
+        let comic = try JSONDecoder().decode(Comic.self, from: data)
+        XCTAssertEqual(comic.authors, ["作者"])
+        XCTAssertTrue(comic.authorDetails.isEmpty)
+        XCTAssertNil(comic.sexyLevel)
+        XCTAssertNil(comic.sexyLevelReason)
+        XCTAssertEqual(try JSONDecoder().decode(Comic.self, from: JSONEncoder().encode(comic)), comic)
+    }
+
+    func testRatingDistinguishesZeroFromMissingAndPreservesReason() throws {
+        let data = Data(#"{"id":"1","title":"分级","authors":[{"id":7,"name":"作者"}],"sexyLevel":"0","sexyLevelReason":"无性内容"}"#.utf8)
+        let comic = try JSONDecoder().decode(Comic.self, from: data)
+        XCTAssertEqual(comic.sexyLevel, 0)
+        XCTAssertEqual(comic.sexyLevelReason, "无性内容")
+        XCTAssertEqual(comic.authorDetails.first?.id, "7")
+        XCTAssertEqual(try JSONDecoder().decode(Comic.self, from: JSONEncoder().encode(comic)), comic)
+
+        let unclassified = try JSONDecoder().decode(Comic.self, from: Data(#"{"id":"2","title":"未分级","sexyLevel":null}"#.utf8))
+        XCTAssertNil(unclassified.sexyLevel)
     }
 
     func testMissingIdentifierIsRejected() {
