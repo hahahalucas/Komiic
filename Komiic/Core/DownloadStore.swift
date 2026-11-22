@@ -62,6 +62,7 @@ final class DownloadStore: ObservableObject {
     private var queue: [String] = []
     private var worker: Task<Void, Never>?
     private var currentDownload: Task<Void, Error>?
+    private var imageRequests: [String: Task<Data, Error>] = [:]
 
     var storageBytes: Int64 { items.reduce(0) { $0 + $1.byteCount } }
     var availableBytes: Int64 {
@@ -280,9 +281,16 @@ final class DownloadStore: ObservableObject {
     }
 
     private func fetchImage(page: ComicPage, baseURL: URL) async throws -> Data {
+        let key = "\(baseURL.absoluteString)|\(page.kid)"
+        if let running = imageRequests[key] { return try await running.value }
+        let request = Task<Data, Error> {
+            if let imageLoader { return try await imageLoader(page, baseURL) }
+            return try await KomiicAPI(baseURL: baseURL, session: session).imageData(for: page)
+        }
+        imageRequests[key] = request
+        defer { imageRequests[key] = nil }
         let data: Data
-        if let imageLoader { data = try await imageLoader(page, baseURL) }
-        else { data = try await KomiicAPI(baseURL: baseURL, session: session).imageData(for: page) }
+        data = try await request.value
         try Task.checkCancellation()
         guard !data.isEmpty, UIImage(data: data) != nil else { throw ImageStorageError.invalidImage }
         return data

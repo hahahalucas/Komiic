@@ -3,6 +3,18 @@ import XCTest
 
 @MainActor
 final class CatalogModelTests: XCTestCase {
+    func testRevisitingLoadedFeedUsesCachedPageAndExplicitRefreshFetchesAgain() async {
+        var requests = 0
+        let model = CatalogModel { _, _, _ in
+            requests += 1
+            return [Comic(id: "cached", title: "缓存")]
+        }
+        await model.loadIfNeeded(feed: .updated, filter: .all)
+        await model.loadIfNeeded(feed: .updated, filter: .all)
+        XCTAssertEqual(requests, 1)
+        await model.load(feed: .updated, filter: .all, reset: true)
+        XCTAssertEqual(requests, 2)
+    }
     func testRepeatedRefreshRequestsFirstPageEvenWhenResultsAreUnchanged() async {
         let loader = ControlledCatalogLoader()
         let model = CatalogModel { _, offset, filter in try await loader.fetch(offset: offset, filter: filter) }

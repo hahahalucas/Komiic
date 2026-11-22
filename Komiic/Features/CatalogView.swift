@@ -11,6 +11,12 @@ final class CatalogModel: ObservableObject {
     private var offset = 0
     private let fetchComics: (CatalogFeed, Int, ContentFilter) async throws -> [Comic]
     private var requestTask: Task<[Comic], Error>?
+    private var requestedFilter: ContentFilter?
+
+    func loadIfNeeded(feed: CatalogFeed, filter: ContentFilter) async {
+        guard loadedFilter != filter, !(loading && requestedFilter == filter) else { return }
+        await load(feed: feed, filter: filter, reset: true)
+    }
 
     init(fetchComics: @escaping (CatalogFeed, Int, ContentFilter) async throws -> [Comic] = { feed, offset, filter in
         try await KomiicAPI().catalog(feed: feed, offset: offset, filter: filter)
@@ -33,6 +39,7 @@ final class CatalogModel: ObservableObject {
         let requestID = generation
         let requestedOffset = reset ? 0 : offset
         loading = true
+        requestedFilter = filter
         error = nil
         // A collapsing refresh control or a pager transition must not cancel the request.
         // A newer reset explicitly cancels and supersedes it instead.
@@ -86,6 +93,7 @@ private enum CatalogPage: String, CaseIterable, Identifiable {
 struct CatalogView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject private var settings: ReaderSettings
+    @EnvironmentObject private var content: AppContentStore
     @State private var page: CatalogPage = .updated
     @State private var filter: ContentFilter = .all
     @State private var showFilter = false
@@ -113,7 +121,8 @@ struct CatalogView: View {
                 ForEach(CatalogPage.allCases) { item in
                     Group {
                         if let feed = item.feed {
-                            CatalogFeedPage(feed: feed, filter: filter, active: page == item, mode: settings.contentMode)
+                            CatalogFeedPage(feed: feed, filter: filter, active: page == item,
+                                            model: content.catalog(feed: feed, mode: settings.contentMode))
                         } else {
                             HistoryView()
                         }
@@ -171,14 +180,7 @@ private struct CatalogFeedPage: View {
     let active: Bool
     @EnvironmentObject private var library: LibraryStore
     @EnvironmentObject private var settings: ReaderSettings
-    @StateObject private var model: CatalogModel
-
-    init(feed: CatalogFeed, filter: ContentFilter, active: Bool, mode: ComicContentMode) {
-        self.feed = feed; self.filter = filter; self.active = active
-        _model = StateObject(wrappedValue: CatalogModel { feed, offset, filter in
-            try await KomiicAPI(mode: mode).catalog(feed: feed, offset: offset, filter: filter)
-        })
-    }
+    @ObservedObject var model: CatalogModel
 
     private var visibleComics: [Comic] {
         model.comics.filter { !library.isBlocked($0) && !settings.shouldHide($0) }
@@ -209,7 +211,7 @@ private struct CatalogFeedPage: View {
         .refreshable { await reload() }
         .task(id: active ? filter : nil) {
             guard !Task.isCancelled, active, model.loadedFilter != filter else { return }
-            await reload()
+            await model.loadIfNeeded(feed: feed, filter: filter)
         }
     }
 

@@ -42,6 +42,7 @@ struct FavoritesView: View {
 }
 
 struct BookmarksView: View {
+    @Environment(\.openComicDirectory) private var openComicDirectory
     @EnvironmentObject private var library: LibraryStore
     @EnvironmentObject private var settings: ReaderSettings
     @State private var launch: ReaderLaunch?
@@ -53,7 +54,9 @@ struct BookmarksView: View {
                     EmptyState(symbol: "bookmark", title: "留住想再看的那一页", message: "阅读时轻点书签按钮，保存当前页。")
                 }
                 ForEach(library.bookmarks.filter { !settings.shouldHide($0.comic) && !library.isBlocked($0.comic) }) { bookmark in
-                    Button { launch = ReaderLaunch(comic: bookmark.comic, chapter: bookmark.chapter, page: bookmark.page) } label: {
+                    ComicActivation(comic: bookmark.comic, action: {
+                        launch = ReaderLaunch(comic: bookmark.comic, chapter: bookmark.chapter, page: bookmark.page)
+                    }) {
                         HStack(spacing: 14) {
                             ComicCover(comic: bookmark.comic).frame(width: 58, height: 80).clipShape(RoundedRectangle(cornerRadius: 8))
                             VStack(alignment: .leading, spacing: 6) {
@@ -72,7 +75,9 @@ struct BookmarksView: View {
                 }
             }.padding(16)
         }
-        .fullScreenCover(item: $launch) { item in ReaderView(comic: item.comic, chapter: item.chapter, initialPage: item.page) }
+        .fullScreenCover(item: $launch) { item in
+            ReaderView(comic: item.comic, chapter: item.chapter, initialPage: item.page, onReturnToDirectory: openComicDirectory)
+        }
     }
 }
 
@@ -91,6 +96,10 @@ struct ShelvesView: View {
                 }
                 Text("把喜欢的漫画，整理成自己的小小书房。")
                     .font(.subheadline).foregroundStyle(.secondary)
+                if let message = library.lastError ?? library.officialSyncError {
+                    Text(message).font(.caption).foregroundStyle(.secondary)
+                }
+                if library.syncingOfficial { ProgressView().frame(maxWidth: .infinity) }
                 if library.shelves.isEmpty {
                     EmptyState(symbol: "books.vertical", title: "创建第一个书柜", message: "按题材、心情或阅读计划整理漫画。",
                                actionTitle: "创建书柜", action: { name = ""; creating = true })
@@ -117,6 +126,9 @@ struct ShelvesView: View {
                 }
             }.padding(16)
         }
+        .scrollBounceBehavior(.always, axes: .vertical)
+        .task(id: library.activeMode) { await library.refreshOfficialLibrary(force: false) }
+        .refreshable { await library.refreshOfficialLibrary() }
         .alert("创建书柜", isPresented: $creating) {
             TextField("书柜名称", text: $name)
             Button("取消", role: .cancel) {}
@@ -143,7 +155,7 @@ private struct ShelfDetailView: View {
                 } else {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 105, maximum: 170), spacing: 10)], spacing: 16) {
                         ForEach(shelf.comics.filter { !settings.shouldHide($0) && !library.isBlocked($0) }) { comic in
-                            NavigationLink(value: comic) { ComicCard(comic: comic) }.buttonStyle(.plain)
+                            ComicActivation(comic: comic) { ComicCard(comic: comic) }.buttonStyle(.plain)
                                 .contextMenu {
                                     Button("移出书柜", role: .destructive) { library.removeFromShelf(comicID: comic.id, shelfID: shelfID) }
                                 }
@@ -154,6 +166,7 @@ private struct ShelfDetailView: View {
         }
         .background(KomiicTheme.canvas)
         .navigationTitle(shelf?.name ?? "书柜")
+        .refreshable { await library.refreshOfficialLibrary() }
         .toolbar {
             Menu {
                 Button("重命名", systemImage: "pencil") { name = shelf?.name ?? ""; rename = true }
@@ -172,37 +185,37 @@ private struct ShelfDetailView: View {
 }
 
 struct HistoryView: View {
+    @Environment(\.openComicDirectory) private var openComicDirectory
     @EnvironmentObject private var library: LibraryStore
     @EnvironmentObject private var settings: ReaderSettings
     @State private var launch: ReaderLaunch?
     var body: some View {
         ScrollView {
-            LazyVStack(spacing: 14) {
+            VStack(spacing: 14) {
                 if library.history.isEmpty {
                     EmptyState(symbol: "clock.arrow.circlepath", title: "故事，从这里继续", message: "阅读漫画后，这里会自动记录你的进度。")
                 }
-                ForEach(library.history.filter { !settings.shouldHide($0.comic) && !library.isBlocked($0.comic) }) { progress in
-                    Button { launch = ReaderLaunch(comic: progress.comic, chapter: progress.chapter, page: progress.page) } label: {
-                        HStack(spacing: 14) {
-                            ComicCover(comic: progress.comic).frame(width: 64, height: 88)
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text(progress.comic.title).font(.subheadline.bold()).lineLimit(2)
-                                Text(progress.totalPages > 0
-                                     ? "\(progress.chapter.displayTitle) · \(progress.page + 1)/\(progress.totalPages) 页"
-                                     : "\(progress.chapter.displayTitle) · 第 \(progress.page + 1) 页")
-                                    .font(.caption).foregroundStyle(.secondary)
-                                if progress.totalPages > 0 { ProgressView(value: progress.fraction).tint(KomiicTheme.accent) }
-                                Text(progress.date, style: .relative).font(.caption2).foregroundStyle(.secondary)
-                            }
-                            Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
-                        }.padding(13).komiicCard()
-                    }.buttonStyle(.plain)
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 3), spacing: 18) {
+                    ForEach(library.history.filter { !settings.shouldHide($0.comic) && !library.isBlocked($0.comic) }) { progress in
+                        ComicActivation(comic: progress.comic, action: {
+                            launch = ReaderLaunch(comic: progress.comic, chapter: progress.chapter, page: progress.page)
+                        }) {
+                            ComicCard(comic: progress.comic, progressLabel: "第 \(progress.page + 1) 页")
+                                .overlay(alignment: .bottom) {
+                                    if progress.totalPages > 0 {
+                                        ProgressView(value: progress.fraction).tint(KomiicTheme.accent)
+                                    }
+                                }
+                        }
+                        .contextMenu { ComicContextMenu(comic: progress.comic) }
+                    }
                 }
             }.padding(16)
         }
         .refreshable { await library.refreshOfficialLibrary() }
-        .fullScreenCover(item: $launch) { item in ReaderView(comic: item.comic, chapter: item.chapter, initialPage: item.page) }
+        .fullScreenCover(item: $launch) { item in
+            ReaderView(comic: item.comic, chapter: item.chapter, initialPage: item.page, onReturnToDirectory: openComicDirectory)
+        }
     }
 }
 

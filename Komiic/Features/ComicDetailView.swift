@@ -35,6 +35,7 @@ struct ComicDetailView: View {
             VStack(alignment: .leading, spacing: 24) {
                 HStack(alignment: .top, spacing: 20) {
                     ComicCover(comic: displayedComic)
+                        .onTapGesture { settings.revealWarningCover(displayedComic) }
                         .frame(width: 128).clipShape(RoundedRectangle(cornerRadius: 14))
                         .shadow(color: .black.opacity(0.10), radius: 12, y: 6)
                     VStack(alignment: .leading, spacing: 12) {
@@ -158,7 +159,7 @@ struct ComicDetailView: View {
             }
         }
         .fullScreenCover(item: $launch, onDismiss: resetDirectory) { item in
-            ReaderView(comic: item.comic, chapter: item.chapter, initialPage: item.page)
+            ReaderView(comic: item.comic, chapter: item.chapter, initialPage: item.page, chapterDirectory: chapters)
         }
         .sheet(isPresented: $addingToShelf) { AddToShelfView(comic: displayedComic).presentationDetents([.medium, .large]) }
     }

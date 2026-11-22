@@ -34,7 +34,6 @@ struct WebsiteView: View {
                     Button("完成") {
                         Task {
                             await WebCookieBridge.synchronize(preferWeb: true)
-                            onClose?()
                             dismiss()
                         }
                     }

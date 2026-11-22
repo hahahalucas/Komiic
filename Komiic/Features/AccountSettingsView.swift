@@ -12,27 +12,37 @@ struct AccountView: View {
     var onOpenFavorites: (() -> Void)? = nil
     var onOpenBookmarks: (() -> Void)? = nil
     var onOpenShelves: (() -> Void)? = nil
+    @EnvironmentObject private var settings: ReaderSettings
+    @EnvironmentObject private var content: AppContentStore
+
+    var body: some View {
+        AccountContentView(onOpenFavorites: onOpenFavorites, onOpenBookmarks: onOpenBookmarks,
+                           onOpenShelves: onOpenShelves, model: content.account(mode: settings.contentMode))
+    }
+}
+
+private struct AccountContentView: View {
+    var onOpenFavorites: (() -> Void)?
+    var onOpenBookmarks: (() -> Void)?
+    var onOpenShelves: (() -> Void)?
+    @ObservedObject var model: AccountProfileModel
     @EnvironmentObject private var library: LibraryStore
     @EnvironmentObject private var settings: ReaderSettings
+    @EnvironmentObject private var content: AppContentStore
     @State private var website: WebDestination?
-    @State private var profile: KomiicAccountProfile?
-    @State private var connected = false
-    @State private var loading = false
-    @State private var error: String?
+    private var profile: KomiicAccountProfile? { model.profile }
+    private var connected: Bool { model.connected }
+    private var loading: Bool { model.loading }
     @State private var signingOut = false
-    @State private var requestID = UUID()
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 profileHeader
                 if loading { ProgressView("正在读取账号资料…").frame(maxWidth: .infinity) }
-                if let error {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text(error).font(.caption).foregroundStyle(.secondary)
-                        Button("重新读取") { Task { await loadProfile() } }.font(.subheadline)
-                    }
-                    .padding(16).frame(maxWidth: .infinity, alignment: .leading).komiicCard()
+                if let error = model.error {
+                    Text(error + " 下拉可刷新。")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
                 if let profile {
                     officialStats(profile)
@@ -61,7 +71,7 @@ struct AccountView: View {
         .background(KomiicTheme.canvas)
         .navigationTitle("账号").navigationBarTitleDisplayMode(.inline)
         .refreshable { await loadProfile() }
-        .task(id: settings.contentMode) { await loadProfile() }
+        .task(id: settings.contentMode) { await loadProfile(force: false) }
         .sheet(item: $website) { destination in
             WebsiteView(url: destination.url, title: destination.title, onClose: {
                 Task { await loadProfile() }
@@ -69,9 +79,7 @@ struct AccountView: View {
         }
         .confirmationDialog("退出此 App 中的 Komiic 官网会话？本机阅读资料会保留。", isPresented: $signingOut, titleVisibility: .visible) {
             Button("退出登录", role: .destructive) {
-                requestID = UUID()
-                profile = nil
-                connected = false
+                content.resetAccounts()
                 settings.cancelWarningSync()
                 library.resetOfficialSession()
                 Task {
@@ -174,7 +182,10 @@ struct AccountView: View {
                 else { openWebsite("/favorite", title: "官网收藏") }
             }
             collectionButton("书签", value: profile.bookmarkCount, symbol: "bookmark.fill") { openWebsite("/bookmarks", title: "官网书签") }
-            collectionButton("书柜", value: profile.folderCount, symbol: "folder.fill") { openWebsite("/folder", title: "官网书柜") }
+            collectionButton("书柜", value: library.shelves.count, symbol: "folder.fill") {
+                if let onOpenShelves { onOpenShelves() }
+                else { openWebsite("/folder", title: "官网书柜") }
+            }
             collectionButton("追踪书柜", value: profile.followedFolderCount, symbol: "bookmark") { openWebsite("/folder?tab=followed", title: "追踪书柜") }
         }
     }
@@ -205,36 +216,16 @@ struct AccountView: View {
         }
     }
 
-    @MainActor private func loadProfile() async {
+    @MainActor private func loadProfile(force: Bool = true) async {
+        guard force || !model.hasLoaded else { return }
         let mode = settings.contentMode
-        let id = UUID()
-        requestID = id
-        profile = nil
-        loading = true
-        error = nil
         await WebCookieBridge.synchronize()
-        guard requestID == id, !Task.isCancelled else { return }
-        connected = OfficialAccountSession.isConnected(mode: mode)
-        guard connected else {
-            loading = false
-            await library.refreshOfficialLibrary()
-            return
-        }
-        do {
-            let fetched = try await KomiicAPI(mode: mode).accountProfile()
-            try Task.checkCancellation()
-            guard requestID == id, settings.contentMode == mode else { return }
-            profile = fetched
-            connected = fetched != nil
-        } catch is CancellationError {
-        } catch {
-            guard requestID == id, !Task.isCancelled else { return }
-            self.error = error.localizedDescription
-        }
-        if requestID == id { loading = false }
-        if requestID == id {
-            await settings.syncWarningPreferences(mode: mode)
-            await library.refreshOfficialLibrary()
+        guard !Task.isCancelled, settings.contentMode == mode else { return }
+        async let profileLoad: Void = model.load(force: force)
+        await library.refreshOfficialLibrary(force: force)
+        await profileLoad
+        if settings.contentMode == mode, let profile = model.profile {
+            settings.applyWarningPreferences(profile.warningPreferences)
         }
     }
 
@@ -256,6 +247,9 @@ struct BlockedComicsView: View {
 
     var body: some View {
         List {
+            if let error = library.officialSyncError {
+                Text(error).font(.caption).foregroundStyle(.secondary).listRowBackground(Color.clear)
+            }
             if library.blockedComicIDs.isEmpty {
                 ContentUnavailableView("没有屏蔽的漫画", systemImage: "eye.slash",
                                        description: Text("屏蔽的漫画会显示在这里，可以随时解除。"))
@@ -288,7 +282,14 @@ struct BlockedComicsView: View {
             }
         }
         .navigationTitle("屏蔽漫画").navigationBarTitleDisplayMode(.inline)
-        .task(id: library.activeMode) { await loadMissingMetadata() }
+        .task(id: library.activeMode) {
+            await library.refreshOfficialLibrary(force: false)
+            await loadMissingMetadata()
+        }
+        .refreshable {
+            await library.refreshOfficialLibrary()
+            await loadMissingMetadata()
+        }
     }
 
     @MainActor private func loadMissingMetadata() async {

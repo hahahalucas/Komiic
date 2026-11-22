@@ -7,6 +7,9 @@ private actor OfficialLibraryStub {
     var historyPages: [ComicContentMode: [Int: [OfficialReadingHistory]]] = [:]
     var failWrites = false
     var writes: [String] = []
+    var shelfRows: [ComicContentMode: [Bookshelf]] = [:]
+    var blockRows: [ComicContentMode: OfficialBlockedCollection] = [:]
+    var identityRequests = 0
     var suspendNextFavorites = false
     private var suspended: CheckedContinuation<Void, Never>?
     private var suspensionWaiter: CheckedContinuation<Void, Never>?
@@ -16,10 +19,61 @@ private actor OfficialLibraryStub {
             favorites: { await self.favorites(mode: $0, offset: $1) },
             history: { await self.history(mode: $0, offset: $1) },
             setFavorite: { try await self.setFavorite(mode: $0, comicID: $1, favorite: $2) },
-            recordProgress: { try await self.recordProgress(mode: $0, comicID: $1, chapterID: $2, page: $3) })
+            recordProgress: { try await self.recordProgress(mode: $0, comicID: $1, chapterID: $2, page: $3) },
+            shelves: { await self.shelves($0) },
+            blockedComics: { await self.blocks($0) },
+            createShelf: { try await self.createShelf($0, name: $1) },
+            renameShelf: { try await self.renameShelf($0, id: $1, name: $2) },
+            deleteShelf: { try await self.deleteShelf($0, id: $1) },
+            setShelfComic: { try await self.setShelfComic($0, id: $1, comicID: $2, adding: $3) },
+            setBlocked: { try await self.setBlocked($0, comicID: $1, blocked: $2) })
     }
 
-    func identity(_ mode: ComicContentMode) -> String? { identities[mode] }
+    func identity(_ mode: ComicContentMode) -> String? { identityRequests += 1; return identities[mode] }
+    func identityRequestCount() -> Int { identityRequests }
+    func setCollections(mode: ComicContentMode, shelves: [Bookshelf], blocked: [Comic]) {
+        shelfRows[mode] = shelves
+        blockRows[mode] = OfficialBlockedCollection(ids: Set(blocked.map(\.id)), comics: blocked)
+    }
+    private func shelves(_ mode: ComicContentMode) -> [Bookshelf] { shelfRows[mode] ?? [] }
+    private func blocks(_ mode: ComicContentMode) -> OfficialBlockedCollection { blockRows[mode] ?? OfficialBlockedCollection() }
+    private func createShelf(_ mode: ComicContentMode, name: String) throws -> Bookshelf {
+        if failWrites { throw URLError(.notConnectedToInternet) }
+        let shelf = Bookshelf.official(id: "remote-\(name)", name: name)
+        shelfRows[mode, default: []].append(shelf)
+        writes.append("create:\(name)")
+        return shelf
+    }
+    private func renameShelf(_ mode: ComicContentMode, id: String, name: String) throws {
+        if failWrites { throw URLError(.notConnectedToInternet) }
+        if let index = shelfRows[mode]?.firstIndex(where: { $0.officialID == id }) { shelfRows[mode]?[index].name = name }
+        writes.append("rename:\(id):\(name)")
+    }
+    private func deleteShelf(_ mode: ComicContentMode, id: String) throws {
+        if failWrites { throw URLError(.notConnectedToInternet) }
+        shelfRows[mode]?.removeAll { $0.officialID == id }
+        writes.append("delete:\(id)")
+    }
+    private func setShelfComic(_ mode: ComicContentMode, id: String, comicID: String, adding: Bool) throws {
+        if failWrites { throw URLError(.notConnectedToInternet) }
+        if let index = shelfRows[mode]?.firstIndex(where: { $0.officialID == id }) {
+            shelfRows[mode]?[index].comics.removeAll { $0.id == comicID }
+            if adding { shelfRows[mode]?[index].comics.append(Comic(id: comicID, title: comicID)) }
+        }
+        writes.append("shelf:\(id):\(comicID):\(adding)")
+    }
+    private func setBlocked(_ mode: ComicContentMode, comicID: String, blocked: Bool) throws {
+        if failWrites { throw URLError(.notConnectedToInternet) }
+        var collection = blockRows[mode] ?? OfficialBlockedCollection()
+        collection.ids.remove(comicID)
+        collection.comics.removeAll { $0.id == comicID }
+        if blocked {
+            collection.ids.insert(comicID)
+            collection.comics.append(Comic(id: comicID, title: comicID))
+        }
+        blockRows[mode] = collection
+        writes.append("block:\(comicID):\(blocked)")
+    }
     func setIdentity(_ id: String?, mode: ComicContentMode) { identities[mode] = id }
     func setFavorites(_ comics: [Comic], mode: ComicContentMode, offset: Int = 0) {
         favoritePages[mode, default: [:]][offset] = comics
@@ -68,6 +122,91 @@ private actor OfficialLibraryStub {
 
 @MainActor
 final class OfficialLibrarySyncTests: XCTestCase {
+    func testWebsiteShelvesAndBlocksReplaceCloudStateWithoutOverwritingLocalArchive() async throws {
+        let server = OfficialLibraryStub()
+        let store = LibraryStore(directoryURL: try directory(), officialClient: await server.client())
+        let local = Comic(id: "local", title: "本机")
+        let localShelf = try XCTUnwrap(store.createShelf(name: "本机书柜"))
+        store.addToShelf(local, shelfID: localShelf.id)
+        store.toggleBlocked(local)
+        let remote = Comic(id: "remote", title: "官网")
+        var shelf = Bookshelf.official(id: "7", name: "官网书柜")
+        shelf.comics = [remote]
+        await server.setCollections(mode: .general, shelves: [shelf], blocked: [remote])
+        await store.refreshOfficialLibrary()
+        XCTAssertEqual(store.shelves.first?.officialID, "7")
+        XCTAssertEqual(store.shelves.first?.comics.map(\.id), ["remote"])
+        XCTAssertEqual(store.blockedComicIDs, ["remote"])
+        await server.setCollections(mode: .general, shelves: [], blocked: [])
+        await store.refreshOfficialLibrary()
+        XCTAssertTrue(store.shelves.isEmpty)
+        XCTAssertTrue(store.blockedComicIDs.isEmpty)
+        store.resetOfficialSession()
+        XCTAssertEqual(store.shelves.first?.id, localShelf.id)
+        XCTAssertEqual(store.blockedComicIDs, ["local"])
+    }
+
+    func testNewShelfKeepsIdentityWhileMembershipAndRenameWriteToItsOfficialID() async throws {
+        let server = OfficialLibraryStub()
+        let store = LibraryStore(directoryURL: try directory(), officialClient: await server.client())
+        await store.refreshOfficialLibrary()
+        let shelf = try XCTUnwrap(store.createShelf(name: "新柜"))
+        store.addToShelf(Comic(id: "comic", title: "漫画"), shelfID: shelf.id)
+        store.renameShelf(id: shelf.id, name: "改名")
+        await store.retryPendingOfficialChanges()
+        XCTAssertEqual(store.pendingOfficialChangeCount, 0)
+        await store.refreshOfficialLibrary()
+        XCTAssertEqual(store.shelves.first?.id, shelf.id)
+        XCTAssertEqual(store.shelves.first?.name, "改名")
+        XCTAssertEqual(store.shelves.first?.comics.map(\.id), ["comic"])
+        store.deleteShelf(id: shelf.id)
+        await store.retryPendingOfficialChanges()
+        await store.refreshOfficialLibrary()
+        XCTAssertTrue(store.shelves.isEmpty)
+        store.resetOfficialSession()
+    }
+
+    func testBlockWriteSurvivesRestartAndNeverUploadsToAnotherAccount() async throws {
+        let server = OfficialLibraryStub()
+        let url = try directory()
+        let store = LibraryStore(directoryURL: url, officialClient: await server.client())
+        await store.refreshOfficialLibrary()
+        await server.setFailingWrites(true)
+        store.toggleBlocked(Comic(id: "blocked", title: "屏蔽"))
+        await store.retryPendingOfficialChanges()
+        XCTAssertEqual(store.pendingOfficialChangeCount, 1)
+        XCTAssertNil(store.lastError)
+        store.resetOfficialSession()
+        let restored = LibraryStore(directoryURL: url, officialClient: await server.client())
+        await server.setIdentity("other", mode: .general)
+        await server.setFailingWrites(false)
+        await restored.refreshOfficialLibrary()
+        XCTAssertTrue(restored.blockedComicIDs.isEmpty)
+        XCTAssertEqual(restored.pendingOfficialChangeCount, 1)
+        await server.setIdentity("general-account", mode: .general)
+        await restored.refreshOfficialLibrary()
+        XCTAssertEqual(restored.blockedComicIDs, ["blocked"])
+        XCTAssertEqual(restored.pendingOfficialChangeCount, 0)
+        restored.unblock(comicID: "blocked")
+        await restored.retryPendingOfficialChanges()
+        await restored.refreshOfficialLibrary()
+        XCTAssertTrue(restored.blockedComicIDs.isEmpty)
+        restored.resetOfficialSession()
+    }
+
+    func testInitialLibraryLoadsOnceAndForegroundWithoutPendingEditsDoesNotQueryAccount() async throws {
+        let server = OfficialLibraryStub()
+        let store = LibraryStore(directoryURL: try directory(), officialClient: await server.client())
+        await store.refreshOfficialLibrary(force: false)
+        await store.refreshOfficialLibrary(force: false)
+        await store.retryPendingOfficialChanges()
+        let firstCount = await server.identityRequestCount()
+        XCTAssertEqual(firstCount, 1)
+        await store.refreshOfficialLibrary()
+        let refreshedCount = await server.identityRequestCount()
+        XCTAssertEqual(refreshedCount, 2)
+        store.resetOfficialSession()
+    }
     private func directory() throws -> URL {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("KomiicSyncTests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)

@@ -80,12 +80,8 @@ struct ComicGrid: View {
         LazyVGrid(columns: [GridItem(.adaptive(minimum: sizeClass == .regular ? 150 : 105,
                                              maximum: sizeClass == .regular ? 220 : 170), spacing: 12)], spacing: 18) {
             ForEach(comics.filter { !settings.shouldHide($0) }) { comic in
-                Group {
-                    if let onSelect {
-                        Button { onSelect(comic) } label: { ComicCard(comic: comic) }
-                    } else {
-                        NavigationLink(value: comic) { ComicCard(comic: comic) }
-                    }
+                ComicActivation(comic: comic, action: onSelect.map { select in { select(comic) } }) {
+                    ComicCard(comic: comic)
                 }
                     .buttonStyle(.plain)
                     .contextMenu {
@@ -93,6 +89,28 @@ struct ComicGrid: View {
                     }
             }
         }
+    }
+}
+
+/// A warning consumes the first activation; the second uses the normal destination.
+struct ComicActivation<Content: View>: View {
+    let comic: Comic
+    var action: (() -> Void)? = nil
+    @ViewBuilder var content: () -> Content
+    @EnvironmentObject private var settings: ReaderSettings
+
+    var body: some View {
+        Group {
+            if settings.shouldBlur(comic) {
+                Button { settings.revealWarningCover(comic) } label: { content() }
+                    .accessibilityHint("轻点显示封面，再次轻点打开漫画")
+            } else if let action {
+                Button(action: action, label: content)
+            } else {
+                NavigationLink(value: comic, label: content)
+            }
+        }
+        .buttonStyle(.plain)
     }
 }
 

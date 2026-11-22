@@ -33,6 +33,16 @@ struct KomiicAPI: Sendable {
     private let session: URLSession
     private let imageSession: URLSession
 
+    private static let apiSession: URLSession = {
+        let configuration = URLSessionConfiguration.default
+        configuration.httpCookieStorage = .shared
+        configuration.httpMaximumConnectionsPerHost = 6
+        configuration.waitsForConnectivity = false
+        configuration.timeoutIntervalForRequest = 20
+        configuration.timeoutIntervalForResource = 45
+        return URLSession(configuration: configuration)
+    }()
+
     private static let ticketImageSession: URLSession = {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.httpShouldSetCookies = false
@@ -40,14 +50,16 @@ struct KomiicAPI: Sendable {
         configuration.urlCache = nil
         configuration.timeoutIntervalForRequest = 45
         configuration.timeoutIntervalForResource = 120
+        configuration.httpMaximumConnectionsPerHost = 6
+        configuration.waitsForConnectivity = false
         return URLSession(configuration: configuration)
     }()
 
-    init(mode: ComicContentMode = .general, baseURL: URL? = nil, session: URLSession = .shared,
+    init(mode: ComicContentMode = .general, baseURL: URL? = nil, session: URLSession? = nil,
          imageSession: URLSession? = nil) {
         self.mode = mode
         self.baseURL = baseURL ?? mode.baseURL
-        self.session = session
+        self.session = session ?? Self.apiSession
         self.imageSession = imageSession ?? Self.ticketImageSession
     }
 
@@ -292,7 +304,7 @@ struct KomiicAPI: Sendable {
         return request
     }
 
-    private func perform<T: Decodable>(_ operation: String, query: String, variables: [String: Any]) async throws -> T {
+    func perform<T: Decodable>(_ operation: String, query: String, variables: [String: Any]) async throws -> T {
         try Task.checkCancellation()
         try await refreshSessionIfNeeded()
         var request = request(path: "api/query")

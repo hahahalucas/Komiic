@@ -69,11 +69,6 @@ struct RootView: View {
             selected = .home
             searchPrompt = false
         }
-        .alert("未能完成操作", isPresented: Binding(get: { library.lastError != nil || downloads.lastError != nil }, set: { visible in
-            if !visible { library.lastError = nil; downloads.lastError = nil }
-        })) {
-            Button("知道了") { library.lastError = nil; downloads.lastError = nil }
-        } message: { Text(library.lastError ?? downloads.lastError ?? "请稍后重试。") }
         .task { seenCompleted = completedIDs; started = true }
         .task(id: settings.contentMode) { await refreshOfficialData() }
         .onChange(of: completedIDs) { _, ids in
@@ -92,7 +87,7 @@ struct RootView: View {
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
-                Task { await refreshOfficialData() }
+                Task { await library.retryPendingOfficialChanges() }
                 downloads.applyCachePolicy(settings.cachePolicy)
             }
         }
@@ -124,7 +119,7 @@ struct RootView: View {
         let mode = settings.contentMode
         await WebCookieBridge.synchronize()
         guard !Task.isCancelled, settings.contentMode == mode else { return }
-        await library.refreshOfficialLibrary()
+        await library.refreshOfficialLibrary(force: false)
         guard !Task.isCancelled, settings.contentMode == mode else { return }
         await settings.syncWarningPreferences(mode: mode)
     }
@@ -203,6 +198,7 @@ private struct TabRootScreen: View {
                 }
         }
         .environment(\.openAuthor) { path.append($0) }
+        .environment(\.openComicDirectory) { path.append($0) }
     }
 
     @ViewBuilder private var content: some View {

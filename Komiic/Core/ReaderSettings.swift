@@ -19,6 +19,12 @@ enum ReadingMode: String, CaseIterable, Identifiable, Codable {
     var title: String { self == .scroll ? "纵向滚动" : "横向翻页" }
 }
 
+enum ReadingDirection: String, CaseIterable, Identifiable, Codable {
+    case right, left
+    var id: String { rawValue }
+    var title: String { self == .right ? "向右阅读" : "向左阅读" }
+}
+
 /// These cases describe when disposable online image files should be removed.
 enum CachePolicy: String, CaseIterable, Identifiable, Codable {
     case never, afterReading, oneDay
@@ -74,6 +80,8 @@ final class ReaderSettings: ObservableObject {
         }
     }
     @Published var readingMode: ReadingMode { didSet { save(readingMode.rawValue, "readingMode") } }
+    @Published var readingDirection: ReadingDirection { didSet { save(readingDirection.rawValue, "readingDirection") } }
+    @Published private(set) var revealedWarningCovers: Set<String> = []
     @Published var cachePolicy: CachePolicy { didSet { save(cachePolicy.rawValue, "cachePolicy") } }
     @Published var einkMode: EInkMode { didSet { save(einkMode.rawValue, "einkMode") } }
     @Published var orientation: ReaderOrientation { didSet { save(orientation.rawValue, "orientation") } }
@@ -99,6 +107,7 @@ final class ReaderSettings: ObservableObject {
             .flatMap { try? JSONDecoder().decode([String: ContentWarningAction].self, from: $0) } ?? [:]
         warningAccountID = defaults.string(forKey: "komiic.warningAccountID")
         readingMode = ReadingMode(rawValue: defaults.string(forKey: "komiic.readingMode") ?? "") ?? .scroll
+        readingDirection = ReadingDirection(rawValue: defaults.string(forKey: "komiic.readingDirection") ?? "") ?? .right
         cachePolicy = CachePolicy(rawValue: defaults.string(forKey: "komiic.cachePolicy") ?? "") ?? .oneDay
         einkMode = EInkMode(rawValue: defaults.string(forKey: "komiic.einkMode") ?? "") ?? .automatic
         orientation = ReaderOrientation(rawValue: defaults.string(forKey: "komiic.orientation") ?? "") ?? .system
@@ -111,6 +120,7 @@ final class ReaderSettings: ObservableObject {
     func warningAction(for tag: String) -> ContentWarningAction { warningPreferences[tag] ?? .show }
 
     func setWarningPreference(tag: String, action: ContentWarningAction) {
+        revealedWarningCovers = []
         warningPreferences[tag] = action
         pendingWarningPreferences[tag] = action
     }
@@ -122,6 +132,7 @@ final class ReaderSettings: ObservableObject {
     func applyWarningPreferences(_ preferences: [ContentWarningPreference]) {
         var merged = Dictionary(preferences.map { ($0.tag, $0.action) }, uniquingKeysWith: { _, latest in latest })
         merged.merge(pendingWarningPreferences) { _, local in local }
+        if merged != warningPreferences { revealedWarningCovers = [] }
         warningPreferences = merged
     }
 
@@ -131,6 +142,12 @@ final class ReaderSettings: ObservableObject {
 
     func shouldBlur(_ comic: Comic) -> Bool {
         comic.warnings.contains { warningAction(for: $0) == .warn }
+            && !revealedWarningCovers.contains("\(contentMode.rawValue):\(comic.id)")
+    }
+
+    func revealWarningCover(_ comic: Comic) {
+        guard !shouldHide(comic) else { return }
+        revealedWarningCovers.insert("\(contentMode.rawValue):\(comic.id)")
     }
 
     @discardableResult

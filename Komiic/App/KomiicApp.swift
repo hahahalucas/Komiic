@@ -22,6 +22,7 @@ struct KomiicApp: App {
 private struct AppContainerView: View {
     @StateObject private var library: LibraryStore
     @StateObject private var downloads = DownloadStore()
+    @StateObject private var content = AppContentStore()
     @StateObject private var settings: ReaderSettings
 
     init() {
@@ -35,6 +36,7 @@ private struct AppContainerView: View {
                 .environmentObject(library)
                 .environmentObject(downloads)
                 .environmentObject(settings)
+                .environmentObject(content)
                 .tint(KomiicTheme.accent)
                 .preferredColorScheme(settings.theme.colorScheme)
                 .task {

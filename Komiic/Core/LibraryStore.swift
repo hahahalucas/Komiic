@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import CryptoKit
 
 struct ReadingBookmark: Codable, Identifiable {
     var comic: Comic
@@ -26,6 +27,14 @@ struct Bookshelf: Codable, Identifiable {
     var name: String
     var comics: [Comic] = []
     var createdAt: Date = Date()
+    var officialID: String? = nil
+
+    static func official(id: String, name: String) -> Bookshelf {
+        let bytes = Array(SHA256.hash(data: Data(id.utf8)).prefix(16))
+        let stableID = UUID(uuid: (bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+                                  bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]))
+        return Bookshelf(id: stableID, name: name, officialID: id)
+    }
 }
 
 private struct LibraryPartition: Codable {
@@ -122,6 +131,10 @@ final class LibraryStore: ObservableObject {
     private var uploadTask: Task<Void, Never>?
     private var flushingChanges = false
     private var mutationWaiters: [CheckedContinuation<Void, Never>] = []
+    private var loadedOfficialModes: Set<ComicContentMode> = []
+    private var refreshTasks: [ComicContentMode: Task<Void, Never>] = [:]
+    private var refreshTaskIDs: [ComicContentMode: UUID] = [:]
+    private var collectionEdits: [ComicContentMode: [OfficialCollectionEdit]] = [:]
 
     var readComicCount: Int { Set(history.map { $0.comic.id }).count }
     var readChapterCount: Int { readChapterIDs.count }
@@ -162,8 +175,15 @@ final class LibraryStore: ObservableObject {
     /// Switching replaces every visible collection together; each mode keeps its own archive.
     func selectMode(_ mode: ComicContentMode) {
         guard activeMode != mode else { return }
+        if refreshTasks[activeMode] != nil {
+            loadedOfficialModes.remove(activeMode)
+            refreshTasks[activeMode]?.cancel()
+            refreshTasks[activeMode] = nil
+            refreshTaskIDs[activeMode] = nil
+        }
         officialRefreshID = UUID()
         syncingOfficial = false
+        officialSyncError = nil
         activeMode = mode
         officialAccountID = officialAccountIDs[mode]
         apply(partition(for: mode))
@@ -250,30 +270,64 @@ final class LibraryStore: ObservableObject {
     func createShelf(name: String) -> Bookshelf? {
         guard let name = validShelfName(name) else { return nil }
         let shelf = Bookshelf(name: name)
+        if let accountID = officialAccountIDs[activeMode] {
+            editOfficialCollection(OfficialLibraryMutation(accountID: accountID, mode: activeMode,
+                kind: .createShelf, comicID: "", shelfID: shelf.id, shelfName: name, shelf: shelf))
+            return shelf
+        }
         updatePartition { $0.shelves.append(shelf) }
         return shelf
     }
 
     func renameShelf(id: UUID, name: String) {
         guard let index = shelves.firstIndex(where: { $0.id == id }), let name = validShelfName(name, excluding: id) else { return }
+        if let accountID = officialAccountIDs[activeMode] {
+            editOfficialCollection(OfficialLibraryMutation(accountID: accountID, mode: activeMode,
+                kind: .renameShelf, comicID: "", shelfID: id, officialShelfID: shelves[index].officialID, shelfName: name))
+            return
+        }
         updatePartition { $0.shelves[index].name = name }
     }
 
     func deleteShelf(id: UUID) {
+        if let accountID = officialAccountIDs[activeMode], let shelf = shelves.first(where: { $0.id == id }) {
+            editOfficialCollection(OfficialLibraryMutation(accountID: accountID, mode: activeMode,
+                kind: .deleteShelf, comicID: "", shelfID: id, officialShelfID: shelf.officialID))
+            return
+        }
         updatePartition { $0.shelves.removeAll { $0.id == id } }
     }
 
     func addToShelf(_ comic: Comic, shelfID: UUID) {
         guard let index = shelves.firstIndex(where: { $0.id == shelfID }), !shelves[index].comics.contains(where: { $0.id == comic.id }) else { return }
+        if let accountID = officialAccountIDs[activeMode] {
+            editOfficialCollection(OfficialLibraryMutation(accountID: accountID, mode: activeMode,
+                kind: .shelfComic, comicID: comic.id, comic: comic, shelfID: shelfID,
+                officialShelfID: shelves[index].officialID, adding: true))
+            return
+        }
         updatePartition { $0.shelves[index].comics.insert(comic, at: 0) }
     }
 
     func removeFromShelf(comicID: String, shelfID: UUID) {
         guard let index = shelves.firstIndex(where: { $0.id == shelfID }) else { return }
+        if let accountID = officialAccountIDs[activeMode] {
+            editOfficialCollection(OfficialLibraryMutation(accountID: accountID, mode: activeMode,
+                kind: .shelfComic, comicID: comicID, shelfID: shelfID,
+                officialShelfID: shelves[index].officialID, adding: false))
+            return
+        }
         updatePartition { $0.shelves[index].comics.removeAll { $0.id == comicID } }
     }
 
     func toggleBlocked(_ comic: Comic, mode: ComicContentMode? = nil) {
+        let targetMode = mode ?? activeMode
+        if let accountID = officialAccountIDs[targetMode] {
+            let snapshot = officialSnapshots[targetMode] ?? OfficialLibrarySnapshot()
+            editOfficialCollection(OfficialLibraryMutation(accountID: accountID, mode: targetMode,
+                kind: .blocked, comicID: comic.id, comic: comic, blocked: !snapshot.blockedComicIDs.contains(comic.id)))
+            return
+        }
         updatePartition(mode: mode) { archive in
             if archive.blockedComicIDs.contains(comic.id) {
                 archive.blockedComicIDs.remove(comic.id)
@@ -287,6 +341,13 @@ final class LibraryStore: ObservableObject {
 
     /// An old blocked ID may be resolved over the network after the user switches modes.
     func cacheBlockedComic(_ comic: Comic, mode: ComicContentMode) {
+        if var snapshot = officialSnapshots[mode], snapshot.blockedComicIDs.contains(comic.id) {
+            snapshot.blockedComics.removeAll { $0.id == comic.id }
+            snapshot.blockedComics.append(comic)
+            officialSnapshots[mode] = snapshot
+            if activeMode == mode { apply(partition(for: mode)) }
+            return
+        }
         updatePartition(mode: mode) { archive in
             guard archive.blockedComicIDs.contains(comic.id) else { return }
             archive.blockedComics.removeAll { $0.id == comic.id }
@@ -295,6 +356,11 @@ final class LibraryStore: ObservableObject {
     }
 
     func unblock(comicID: String) {
+        if let accountID = officialAccountIDs[activeMode] {
+            editOfficialCollection(OfficialLibraryMutation(accountID: accountID, mode: activeMode,
+                kind: .blocked, comicID: comicID, blocked: false))
+            return
+        }
         updatePartition { archive in
             archive.blockedComicIDs.remove(comicID)
             archive.blockedComics.removeAll { $0.id == comicID }
@@ -315,8 +381,23 @@ final class LibraryStore: ObservableObject {
 
     /// Signed-in favorites/history use the account-scoped official snapshot and pending edits.
     /// Logging out restores the independent local archive without copying cloud records into it.
-    func refreshOfficialLibrary() async {
+    func refreshOfficialLibrary(force: Bool = true) async {
         let mode = activeMode
+        if let running = refreshTasks[mode] { await running.value; return }
+        guard force || !loadedOfficialModes.contains(mode) else { return }
+        loadedOfficialModes.insert(mode)
+        let id = UUID()
+        refreshTaskIDs[mode] = id
+        let task = Task { await performOfficialRefresh(mode: mode) }
+        refreshTasks[mode] = task
+        await task.value
+        if refreshTaskIDs[mode] == id {
+            refreshTasks[mode] = nil
+            refreshTaskIDs[mode] = nil
+        }
+    }
+
+    private func performOfficialRefresh(mode: ComicContentMode) async {
         let refreshID = UUID()
         officialRefreshID = refreshID
         syncingOfficial = true
@@ -325,11 +406,16 @@ final class LibraryStore: ObservableObject {
             let accountID = try await officialClient.accountID(mode)
             try Task.checkCancellation()
             guard officialRefreshID == refreshID, activeMode == mode else { return }
-            guard let accountID else { resetOfficialSession(mode: mode); return }
+            guard let accountID else {
+                resetOfficialSession(mode: mode)
+                loadedOfficialModes.insert(mode)
+                return
+            }
             if officialAccountIDs[mode] != accountID {
                 officialSnapshots[mode] = OfficialLibrarySnapshot()
                 favoriteEdits[mode] = [:]
                 progressEdits[mode] = [:]
+                collectionEdits[mode] = []
                 officialAccountIDs[mode] = accountID
                 officialAccountID = accountID
                 apply(partition(for: mode))
@@ -339,20 +425,30 @@ final class LibraryStore: ObservableObject {
             let startingRevision = favoriteEditRevision
             async let loadedFavorites = loadAllOfficialFavorites(mode: mode)
             async let loadedHistory = loadAllOfficialHistory(mode: mode)
+            async let extras = loadOfficialCollections(mode: mode)
             let snapshot = try await OfficialLibrarySnapshot(favorites: loadedFavorites, history: loadedHistory)
+            let collections = await extras
             try Task.checkCancellation()
             guard officialRefreshID == refreshID, activeMode == mode, officialAccountIDs[mode] == accountID else { return }
             var reconciled = snapshot
+            reconciled.shelves = collections.shelves ?? officialSnapshots[mode]?.shelves ?? []
+            reconciled.blockedComicIDs = collections.blockedIDs ?? officialSnapshots[mode]?.blockedComicIDs ?? []
+            reconciled.blockedComics = collections.blockedComics ?? officialSnapshots[mode]?.blockedComics ?? []
             // A tap made while these requests were in flight wins over the older server snapshot.
             for pending in pendingOfficialChanges where pending.accountID == accountID && pending.mode == mode {
                 if pending.kind == .favorite {
                     reconciled.favorites.removeAll { $0.id == pending.comicID }
                     if pending.favorite == true, let comic = pending.comic { reconciled.favorites.insert(comic, at: 0) }
-                } else if let progress = pending.progress {
+                } else if pending.kind == .progress, let progress = pending.progress {
                     reconciled.history.removeAll { $0.comic.id == progress.comic.id }
                     reconciled.history.insert(progress, at: 0)
                     reconciled.readChapterIDs.insert(progress.chapter.id)
+                } else {
+                    reconciled.applyCollectionChange(pending)
                 }
+            }
+            for edit in collectionEdits[mode] ?? [] where edit.change.accountID == accountID && edit.revision > startingRevision {
+                reconciled.applyCollectionChange(edit.change)
             }
             for edit in (favoriteEdits[mode] ?? [:]).values where edit.accountID == accountID && edit.revision > startingRevision {
                 reconciled.favorites.removeAll { $0.id == edit.comic.id }
@@ -366,7 +462,7 @@ final class LibraryStore: ObservableObject {
             }
             officialSnapshots[mode] = reconciled
             apply(partition(for: mode))
-            officialSyncError = nil
+            officialSyncError = collections.error
         } catch is CancellationError {
         } catch let error as URLError where error.code == .cancelled {
         } catch KomiicError.authenticationRequired {
@@ -383,13 +479,20 @@ final class LibraryStore: ObservableObject {
             officialSnapshots[mode] = nil
             favoriteEdits[mode] = nil
             progressEdits[mode] = nil
+            collectionEdits[mode] = nil
+            loadedOfficialModes.remove(mode)
         } else {
+            refreshTasks.values.forEach { $0.cancel() }
+            refreshTasks = [:]
+            refreshTaskIDs = [:]
             uploadTask?.cancel()
             uploadTask = nil
             officialAccountIDs = [:]
             officialSnapshots = [:]
             favoriteEdits = [:]
             progressEdits = [:]
+            collectionEdits = [:]
+            loadedOfficialModes = []
         }
         if mode == nil || mode == activeMode {
             officialRefreshID = UUID()
@@ -428,6 +531,42 @@ final class LibraryStore: ObservableObject {
         }
     }
 
+    private func loadOfficialCollections(mode: ComicContentMode) async -> OfficialCollectionLoad {
+        async let folders = officialResult { try await officialClient.shelves(mode) }
+        async let blocks = officialResult { try await officialClient.blockedComics(mode) }
+        let (shelfResult, blockResult) = await (folders, blocks)
+        var loaded = OfficialCollectionLoad()
+        var errors: [String] = []
+        switch shelfResult {
+        case .success(let shelves):
+            loaded.shelves = shelves.map { shelf in
+                var copy = shelf
+                if let previous = officialSnapshots[mode]?.shelves.first(where: { $0.officialID == shelf.officialID }) {
+                    copy.id = previous.id
+                }
+                return copy
+            }
+        case .failure(let error): errors.append("书柜同步未完成：\(error.localizedDescription)")
+        }
+        switch blockResult {
+        case .success(let blocks): loaded.blockedIDs = blocks.ids; loaded.blockedComics = blocks.comics
+        case .failure(let error): errors.append("屏蔽同步未完成：\(error.localizedDescription)")
+        }
+        loaded.error = errors.isEmpty ? nil : errors.joined(separator: "\n")
+        return loaded
+    }
+
+    private func editOfficialCollection(_ change: OfficialLibraryMutation) {
+        var snapshot = officialSnapshots[change.mode] ?? OfficialLibrarySnapshot()
+        snapshot.applyCollectionChange(change)
+        officialSnapshots[change.mode] = snapshot
+        favoriteEditRevision += 1
+        collectionEdits[change.mode, default: []].removeAll { change.supersedes($0.change) }
+        collectionEdits[change.mode, default: []].append(OfficialCollectionEdit(revision: favoriteEditRevision, change: change))
+        queueOfficialChange(change)
+        if change.mode == activeMode { apply(partition(for: change.mode)) }
+    }
+
     private func loadAllOfficialHistory(mode: ComicContentMode) async throws -> [OfficialReadingHistory] {
         var results: [OfficialReadingHistory] = []
         var ids: Set<String> = []
@@ -455,6 +594,7 @@ final class LibraryStore: ObservableObject {
     }
 
     private func flushPendingOfficialChanges(accountID: String, mode: ComicContentMode) async throws {
+        guard pendingOfficialChanges.contains(where: { $0.accountID == accountID && $0.mode == mode }) else { return }
         while flushingChanges {
             await withCheckedContinuation { mutationWaiters.append($0) }
             try Task.checkCancellation()
@@ -466,14 +606,16 @@ final class LibraryStore: ObservableObject {
             mutationWaiters = []
             for waiter in waiters { waiter.resume() }
         }
+        guard pendingOfficialChanges.contains(where: { $0.accountID == accountID && $0.mode == mode }) else { return }
+        // One identity check covers this serialized batch; never cache identity across batches.
+        guard officialAccountIDs[mode] == accountID,
+              try await officialClient.accountID(mode) == accountID else {
+            resetOfficialSession(mode: mode)
+            return
+        }
         while let change = pendingOfficialChanges.first(where: { $0.accountID == accountID && $0.mode == mode }) {
             try Task.checkCancellation()
             guard officialAccountIDs[mode] == accountID else { return }
-            // Verify against the request's own origin before replaying a saved mutation.
-            guard try await officialClient.accountID(change.mode) == accountID else {
-                resetOfficialSession(mode: mode)
-                return
-            }
             switch change.kind {
             case .favorite:
                 guard let favorite = change.favorite else { throw KomiicError.invalidResponse }
@@ -481,15 +623,50 @@ final class LibraryStore: ObservableObject {
             case .progress:
                 guard let chapterID = change.chapterID, let page = change.page else { throw KomiicError.invalidResponse }
                 try await officialClient.recordProgress(change.mode, change.comicID, chapterID, page)
+            case .blocked:
+                guard let blocked = change.blocked else { throw KomiicError.invalidResponse }
+                try await officialClient.setBlocked(change.mode, change.comicID, blocked)
+            case .createShelf:
+                guard let name = change.shelfName, let localID = change.shelfID else { throw KomiicError.invalidResponse }
+                // Reconcile a prior response lost to a disconnect before creating another folder.
+                let existing = try await officialClient.shelves(mode)
+                let created: Bookshelf
+                if let previous = existing.first(where: { $0.name == name }) { created = previous }
+                else { created = try await officialClient.createShelf(mode, name) }
+                guard officialAccountIDs[mode] == accountID, let remoteID = created.officialID else { return }
+                if let index = officialSnapshots[mode]?.shelves.firstIndex(where: { $0.id == localID }) {
+                    officialSnapshots[mode]?.shelves[index].officialID = remoteID
+                }
+                for index in pendingOfficialChanges.indices where pendingOfficialChanges[index].accountID == accountID
+                    && pendingOfficialChanges[index].mode == mode && pendingOfficialChanges[index].shelfID == localID {
+                    pendingOfficialChanges[index].officialShelfID = remoteID
+                    pendingOfficialChanges[index].shelf?.officialID = remoteID
+                }
+                for index in (collectionEdits[mode] ?? []).indices where collectionEdits[mode]?[index].change.shelfID == localID {
+                    collectionEdits[mode]?[index].change.officialShelfID = remoteID
+                    collectionEdits[mode]?[index].change.shelf?.officialID = remoteID
+                }
+            case .renameShelf:
+                guard let remoteID = officialShelfID(for: change), let name = change.shelfName else { throw KomiicError.invalidResponse }
+                try await officialClient.renameShelf(mode, remoteID, name)
+            case .deleteShelf:
+                guard let remoteID = officialShelfID(for: change) else { throw KomiicError.invalidResponse }
+                try await officialClient.deleteShelf(mode, remoteID)
+            case .shelfComic:
+                guard let remoteID = officialShelfID(for: change), let adding = change.adding else { throw KomiicError.invalidResponse }
+                try await officialClient.setShelfComic(mode, remoteID, change.comicID, adding)
             }
             pendingOfficialChanges.removeAll { $0.id == change.id }
             persist()
         }
     }
 
+    private func officialShelfID(for change: OfficialLibraryMutation) -> String? {
+        change.officialShelfID ?? officialSnapshots[change.mode]?.shelves.first { $0.id == change.shelfID }?.officialID
+    }
+
     private func reportOfficialError(_ error: Error) {
-        let message = "官网喜爱与阅读记录同步未完成，已保留本机资料；下次刷新会重试。\(error.localizedDescription)"
-        if officialSyncError != message { lastError = message }
+        let message = "官网资料同步未完成，下拉刷新会重试。\(error.localizedDescription)"
         officialSyncError = message
     }
 
@@ -526,17 +703,27 @@ final class LibraryStore: ObservableObject {
             favorites = remote.favorites
             history = remote.history
             readChapterIDs = remote.readChapterIDs
+            shelves = remote.shelves
+            blockedComicIDs = remote.blockedComicIDs
+            blockedComics = remote.blockedComics
             if let accountID = officialAccountIDs[activeMode] {
                 for pending in pendingOfficialChanges where pending.accountID == accountID && pending.mode == activeMode {
                     if pending.kind == .favorite {
                         favorites.removeAll { $0.id == pending.comicID }
                         if pending.favorite == true, let comic = pending.comic { favorites.insert(comic, at: 0) }
-                    } else if let progress = pending.progress {
+                    } else if pending.kind == .progress, let progress = pending.progress {
                         history.removeAll { $0.comic.id == progress.comic.id }
                         history.insert(progress, at: 0)
                         readChapterIDs.insert(progress.chapter.id)
                     }
                 }
+                var collections = remote
+                for pending in pendingOfficialChanges where pending.accountID == accountID && pending.mode == activeMode {
+                    collections.applyCollectionChange(pending)
+                }
+                shelves = collections.shelves
+                blockedComicIDs = collections.blockedComicIDs
+                blockedComics = collections.blockedComics
             }
         }
         history.sort { $0.date > $1.date }

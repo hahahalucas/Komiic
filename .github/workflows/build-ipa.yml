@@ -20,6 +20,7 @@ on:
       - komiic-ios-build
       - codex/komiic-3.0
       - codex/komiic-0.4.0
+      - codex/komiic-0.5.0
 
 permissions:
   contents: read
@@ -29,6 +30,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  api-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v7
+      - name: Inspect public first-party collection contracts
+        run: python3 scripts/inspect_collections_api.py
   build:
     runs-on: macos-26
     timeout-minutes: 20

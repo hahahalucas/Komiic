@@ -3,6 +3,26 @@ import XCTest
 
 @MainActor
 final class ReaderSettingsTests: XCTestCase {
+    func testWarningCoverIsRevealedBeforeOpeningAndHiddenPreferenceStillWins() throws {
+        let settings = ReaderSettings(defaults: try defaults())
+        let comic = Comic(id: "warning", title: "警告漫画", warnings: ["血腥"])
+        settings.setWarningPreference(tag: "血腥", action: .warn)
+        XCTAssertTrue(settings.shouldBlur(comic))
+        settings.revealWarningCover(comic)
+        XCTAssertFalse(settings.shouldBlur(comic))
+        settings.contentMode = .adult
+        XCTAssertTrue(settings.shouldBlur(comic))
+        settings.setWarningPreference(tag: "血腥", action: .hide)
+        settings.revealWarningCover(comic)
+        XCTAssertTrue(settings.shouldHide(comic))
+    }
+
+    func testReadingDirectionSurvivesRestart() throws {
+        let defaults = try defaults()
+        let settings = ReaderSettings(defaults: defaults)
+        settings.readingDirection = .left
+        XCTAssertEqual(ReaderSettings(defaults: defaults).readingDirection, .left)
+    }
     private func defaults() throws -> UserDefaults {
         let suite = "KomiicReaderSettingsTests-\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
