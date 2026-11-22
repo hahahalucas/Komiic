@@ -4,7 +4,7 @@
 
 iPad 不强制全屏，声明全部四个方向以支持系统多任务与可变窗口。窗口中的方向和大小以 iPadOS 的规则为准；阅读方向偏好不能覆盖系统对窗口场景的限制。
 
-当前源码为 **0.5.0（build 5）**。设备版 [云端构建](https://github.com/hahahalucas/Komiic/actions/runs/45043225501) 已完成，Xcode 26.6 / iOS SDK 26.5 编译与 IPA 校验通过。[下载产物](https://github.com/hahahalucas/Komiic/actions/runs/45043225501/artifacts/14761494948)内包含 `Komiic-iPhone-iPad-unsigned.ipa`，下载后可另存为 `Komiic-0.5.0-iPhone-iPad-unsigned.ipa`。包内版本为 0.5.0，支持 iPhone / iPad，安装前需自签。相同 App 源码的 [完整模拟器流程](https://github.com/hahahalucas/Komiic/actions/runs/45042874177) 单独执行 iPhone/iPad 各 77 项 XCTest，状态见 [验证记录](Verification.md)。
+当前源码为 **0.5.0（build 5）**。设备版 [云端构建](https://github.com/hahahalucas/Komiic/actions/runs/45043225501) 已完成，Xcode 26.6 / iOS SDK 26.5 编译与 IPA 校验通过。[下载产物](https://github.com/hahahalucas/Komiic/actions/runs/45043225501/artifacts/14761494948)内包含 `Komiic-iPhone-iPad-unsigned.ipa`，下载后可另存为 `Komiic-0.5.0-iPhone-iPad-unsigned.ipa`。包内版本为 0.5.0，支持 iPhone / iPad，安装前需自签。相同 App 源码的 [完整模拟器流程](https://github.com/hahahalucas/Komiic/actions/runs/45042874177) 已在 iPhone/iPad 各通过 77 项 XCTest、零失败，并生成两种模拟器截图；具体证据见 [验证记录](Verification.md)。
 
 以下为 **3.0 历史构建记录**。当时已完成本地静态检查，并上传至 [`codex/komiic-3.0`](https://github.com/hahahalucas/Komiic/tree/codex/komiic-3.0) 独立分支，提交 [`9e9e97414bfaf017e0658f565c748a3b018d40c7`](https://github.com/hahahalucas/Komiic/commit/9e9e97414bfaf017e0658f565c748a3b018d40c7)。[Mac 云端构建 44999974479](https://github.com/hahahalucas/Komiic/actions/runs/44999974479)已启动，设备编译、两种设备各 36 项 XCTest 与 IPA 仍待结果，当前尚无已验证的 3.0 交付包。生成后应核对包内版本与 build，再另存为 `Komiic-3.0-iPhone-iPad-unsigned.ipa`，不能将旧包改名作为新版本交付。
 

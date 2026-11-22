@@ -49,8 +49,16 @@
     "ipaSHA256": "ec5383b66af30fb4e0975634426792f38c66a91cdbbfcf07a61fe3338fe79933"
   },
   "tests": {
-    "countPerDevice": 77
+    "countPerDevice": 77,
+    "total": 154,
+    "failures": 0,
+    "status": "passed",
+    "devices": [
+      "iPhone",
+      "iPad"
+    ]
   },
   "accountAcceptance": "Public first-party contracts and isolated tests checked. Authenticated website changes and physical-device gestures still need acceptance.",
-  "sourceMatchesWorkspace": true
+  "sourceMatchesWorkspace": true,
+  "simulatorConclusion": "success"
 }

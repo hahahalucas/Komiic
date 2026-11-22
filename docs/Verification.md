@@ -1,6 +1,6 @@
 # 0.5.0 验证记录
 
-源码版本 **0.5.0（build 5）**。本地 Windows 工程结构及 Swift 语法检查通过；Xcode 26.6 / iOS SDK 26.5 的设备 Release 编译及 IPA 校验通过。iPhone / iPad 完整回归结果以本次模拟器任务为准。
+源码版本 **0.5.0（build 5）**。本地 Windows 工程结构及 Swift 语法检查通过；Xcode 26.6 / iOS SDK 26.5 的设备 Release 编译及 IPA 校验通过。iPhone 和 iPad 各 77 项 XCTest 通过、零失败，两种模拟器截图及完整流程的设备编译均成功。
 
 [下载 0.5.0 IPA 产物](https://github.com/hahahalucas/Komiic/actions/runs/45043225501/artifacts/14761494948)，ZIP 内为 `Komiic-iPhone-iPad-unsigned.ipa`。包内版本 0.5.0，App 工程 build 5，arm64 iOS 设备代码、iPhone/iPad 支持、最低 iOS 17 与未签名结构校验通过。IPA SHA-256：`ec5383b66af30fb4e0975634426792f38c66a91cdbbfcf07a61fe3338fe79933`。
 
