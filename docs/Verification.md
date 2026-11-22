@@ -12,9 +12,25 @@
 - 内容区按“最近更新 → 最近上架 → 当月最热 → 推荐漫画 → 最近阅读”顺序支持左右滑动，拖动时页面随手势移动，点击分类时有切换动画。
 - 2026-11-22 执行 `python scripts/verify_project.py --require-swift-parser`：工程结构、共享 scheme、资源文件及全部 21 个 Swift 源文件的语法检查通过。
 - `git diff --check` 通过；仅出现预期的 LF 转 CRLF 提示。
-- Xcode 编译、XCTest、模拟器交互、真机安装和新 IPA 构建：未执行。
+- Xcode 26.6 / iOS SDK 26.5 的 Release 设备版编译与 IPA 校验成功；本机再次校验交付包通过。
+- 独立完整流程已成功，iPhone、iPad 各 18 项 XCTest 通过、零失败，生成两种模拟器截图并完成设备版编译；截图生成不等同于实际滑动交互验收。
+- 已人工检查 iPhone 截图及 iPad 缩放预览：确认三个导航入口（iPhone 底部、iPad 系统顶部）、左上角品牌及侧栏图标已移除、首页四个分类等宽铺满一行，且实际漫画列表已加载。
+- 实际滑动等界面交互、真机安装及用户证书签名尚未验收。
 
-以下 2026-11-19 的云端记录和根目录现有 IPA 均属于 **0.1.0 历史版本**，不能证明本次 2.0 修改已通过编译或交互验收。
+## 2.0 云端构建与交付包（2026-11-22）
+
+- 公开源码仓库：[hahahalucas/Komiic](https://github.com/hahahalucas/Komiic)，采用 [MIT 许可证](../LICENSE)。
+- [设备版构建 44991028791](https://github.com/hahahalucas/Komiic/actions/runs/44991028791)：成功；环境为 macOS 26、Xcode 26.6、iOS SDK 26.5。
+- 构建分支为 `codex/komiic-2.0-device`，提交 [`602fc8e57355a74c9fe7f12e5c3bf9423aa1ac56`](https://github.com/hahahalucas/Komiic/commit/602fc8e57355a74c9fe7f12e5c3bf9423aa1ac56)。它与主分支提交 [`0acf31893ffa933f5eb3b1c67cb1b2924d0ef7e9`](https://github.com/hahahalucas/Komiic/commit/0acf31893ffa933f5eb3b1c67cb1b2924d0ef7e9)相比仅调整构建工作流，设备打包使用 `--skip-tests`；App 源码完全一致。
+- 交付 IPA 来自该设备版任务；该任务未运行模拟器测试或生成截图。同一 App 源码的[独立完整流程 44989974389](https://github.com/hahahalucas/Komiic/actions/runs/44989974389)已成功，iPhone、iPad 各 18 项 XCTest 通过、零失败（两次 `TEST SUCCEEDED`），生成两种模拟器截图，并完成设备版编译（`BUILD SUCCEEDED`）。
+- [完整验证产物](https://github.com/hahahalucas/Komiic/actions/runs/44989974389/artifacts/14742196424)包含测试结果、截图、构建日志与独立重建的 IPA，保留至北京时间 2026-11-29 13:54:02。其 ZIP 为 123,949,022 字节，SHA-256：`e30cbbbf35ba530c62467ebc0ae419e0f250f8a4c546f75ec6af690bc75af1fc`；本机归档位置为 `build/Komiic-2.0-full-verification.zip`，提取的测试日志与截图位置为 `build/verified-artifacts-2.0/`。
+- 本机已核对完整产物 ZIP 散列及两份测试日志（各 18 项、零失败，均含 `TEST SUCCEEDED`）；设备包与完整测试的合并证据摘要为 `build/verified-artifacts-2.0/build-summary.json`。
+- 完整流程另一次重建的 IPA SHA-256 为 `006ddcfe1d4bf9333f4d39b4b343115c20d1d96e60996ee2485389237e612df8`，与下面交付副本属于不同构建产物；交付包仍取自已成功的设备版任务。
+- [设备版云端产物](https://github.com/hahahalucas/Komiic/actions/runs/44991028791/artifacts/14742335404)包含默认名称的 IPA、构建日志和校验报告；本机保存至 `build/device-artifacts-2.0/`，并另存带版本号的交付副本 `Komiic-2.0-iPhone-iPad-unsigned.ipa`。
+- 交付包：版本 **2.0**、build **2**，822,136 字节；SHA-256：`e5cede98818e5c1a5a2930fb7337292835159a1d88088db647cf5ca2bfab8615`。
+- 云端及本机校验确认：真实 arm64 Mach-O、iOS 设备平台（platform 2）、SDK `iphoneos26.5`、最低系统 17.0、同时声明 iPhone 与 iPad、SwiftUI 链接及 unsigned 签名结构。未使用用户证书，安装前需要自行签名。
+
+以下 2026-11-19 的云端记录和根目录旧包 `Komiic-iPhone-iPad-unsigned.ipa` 均属于 **0.1.0 历史版本**。
 
 ## 0.1.0 历史云端构建结果（2026-11-19）
 

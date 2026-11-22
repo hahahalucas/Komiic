@@ -4,6 +4,8 @@
 
 当前版本为 **2.0（build 2）**，本次调整导航、首页分类布局和页面切换动画，其他功能沿用现有实现。
 
+公开源码：[hahahalucas/Komiic](https://github.com/hahahalucas/Komiic)。
+
 ## 打开和运行
 
 1. 将整个目录复制到 Mac，使用 **Xcode 26 或更新版本**打开 `Komiic.xcodeproj`。
@@ -21,7 +23,7 @@ iPhone 与 iPad 均保留首页、喜爱、资料库三个标签，资料库包�
 
 首页顶部的最近更新、当月最热、推荐漫画、最近阅读四个主分类等宽铺满一行；最近更新内保留最近更新 / 最近上架切换。内容区可按“最近更新 → 最近上架 → 当月最热 → 推荐漫画 → 最近阅读”的顺序左右滑动，页面随手势移动，点击分类也有切换动画。
 
-项目中的 `Komiic-iPhone-iPad-unsigned.ipa` 是 **0.1.0 历史构建**，当时 iPhone、iPad 各 18 项测试通过并完成设备包校验。2.0 尚未执行 Xcode 编译、模拟器运行或真机验证，不能用旧 IPA 验收本次修改。构建记录与校验值见 [验证记录](docs/Verification.md)。
+2.0 已完成 Xcode 26.6 设备版编译，交付包为 `Komiic-2.0-iPhone-iPad-unsigned.ipa`（822,136 字节）。可从[成功构建的产物](https://github.com/hahahalucas/Komiic/actions/runs/44991028791/artifacts/14742335404)获取；云端包内文件使用默认名称，项目根目录的交付副本加入了版本号。它支持 iPhone 与 iPad，已在本机复核为真实 arm64 iOS 设备包，安装前需要自行签名。旧的 `Komiic-iPhone-iPad-unsigned.ipa` 仍是 0.1.0 历史构建。完整记录与 SHA-256 见 [验证记录](docs/Verification.md)。
 
 ## 已实现功能
 
@@ -64,7 +66,7 @@ iPhone 与 iPad 均保留首页、喜爱、资料库三个标签，资料库包�
 
 ## 验证
 
-本地开发环境为 Windows。2026-11-22，2.0 已通过本地工程结构、共享 scheme、资源文件及全部 21 个 Swift 源文件的语法检查，`git diff --check` 通过。Xcode 编译、XCTest、模拟器交互、真机安装及新 IPA 构建尚未执行。2026-11-19 在 GitHub macOS 26 / Xcode 26.6 环境完成的两种模拟器各 18 项 XCTest 与 Release 设备版编译均属于 0.1.0 历史版本。
+本地开发环境为 Windows。2026-11-22，2.0 已通过本地工程结构、共享 scheme、资源文件及全部 21 个 Swift 源文件的语法检查，`git diff --check` 通过。[设备版构建](https://github.com/hahahalucas/Komiic/actions/runs/44991028791)已成功生成并校验交付 IPA；该任务使用 `--skip-tests`。同一 App 源码的[独立完整流程](https://github.com/hahahalucas/Komiic/actions/runs/44989974389)也已成功：iPhone、iPad 各 18 项测试通过、零失败，生成两种模拟器截图并完成设备版编译；[完整验证产物](https://github.com/hahahalucas/Komiic/actions/runs/44989974389/artifacts/14742196424)包含测试结果、截图和日志。实际滑动等界面交互和真机安装尚未验收。
 
 本地结构检查：
 
