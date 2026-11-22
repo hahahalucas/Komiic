@@ -19,6 +19,7 @@ on:
       - main
       - komiic-ios-build
       - codex/komiic-3.0
+      - codex/komiic-0.4.0
 
 permissions:
   contents: read

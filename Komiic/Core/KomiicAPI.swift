@@ -12,14 +12,14 @@ enum KomiicError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .invalidResponse: return "Komiic 返回了无法识别的数据，请重试或在官网检查连接。"
-        case .http(let status): return "连接 Komiic 失败（HTTP \(status)）。"
-        case .authenticationRequired: return "请先在账号页登录 Komiic，或重新登录以更新会话。"
-        case .imageQuotaExceeded: return "今日图片读取额度已用完，请登录官网查看额度，或在额度重置后重试。"
-        case .rateLimited: return "请求过于频繁，请稍后重试。"
+        case .invalidResponse: return "Komiic �������޷�ʶ������ݣ������Ի��ڹ���������ӡ�"
+        case .http(let status): return "���� Komiic ʧ�ܣ�HTTP \(status)����"
+        case .authenticationRequired: return "�������˺�ҳ��¼ Komiic�������µ�¼�Ը��»Ự��"
+        case .imageQuotaExceeded: return "����ͼƬ��ȡ��������꣬���¼�����鿴��ȣ����ڶ�����ú����ԡ�"
+        case .rateLimited: return "�������Ƶ�������Ժ����ԡ�"
         case .graphQL(let message): return message
-        case .notFound: return "没有找到这部漫画。"
-        case .invalidImage: return "没有取得有效的漫画图片，请重新加载。"
+        case .notFound: return "û���ҵ��ⲿ������"
+        case .invalidImage: return "û��ȡ����Ч������ͼƬ�������¼��ء�"
         }
     }
 }
@@ -29,6 +29,7 @@ enum KomiicError: LocalizedError {
 struct KomiicAPI: Sendable {
     static let pageSize = 30
     let baseURL: URL
+    let mode: ComicContentMode
     private let session: URLSession
     private let imageSession: URLSession
 
@@ -42,11 +43,21 @@ struct KomiicAPI: Sendable {
         return URLSession(configuration: configuration)
     }()
 
-    init(baseURL: URL = URL(string: "https://komiic.cc")!, session: URLSession = .shared,
+    init(mode: ComicContentMode = .general, baseURL: URL? = nil, session: URLSession = .shared,
          imageSession: URLSession? = nil) {
-        self.baseURL = baseURL
+        self.mode = mode
+        self.baseURL = baseURL ?? mode.baseURL
         self.session = session
         self.imageSession = imageSession ?? Self.ticketImageSession
+    }
+
+    /// Hold refreshes while both WebKit and native cookies are being removed.
+    static func beginClearingSession() async {
+        await SessionRefreshCoordinator.shared.beginClearingSession()
+    }
+
+    static func endClearingSession() async {
+        await SessionRefreshCoordinator.shared.endClearingSession()
     }
 
     func catalog(feed: CatalogFeed, offset: Int = 0, filter: ContentFilter = .all) async throws -> [Comic] {
@@ -69,9 +80,14 @@ struct KomiicAPI: Sendable {
             query = "query hotComics($pagination: Pagination!) { comics: hotComics(pagination: $pagination) { \(Self.comicFields) } }"
         case .recommended:
             operation = "topRecommendedComics"
-            query = "query topRecommendedComics($pagination: Pagination!) { comics: topRecommendedComics(period: MONTH, pagination: $pagination) { \(Self.comicFields) } }"
+            query = "query topRecommendedComics($pagination: Pagination!, $adult: Boolean, $contentType: ContentType) { comics: topRecommendedComics(period: MONTH, pagination: $pagination, adult: $adult, contentType: $contentType) { \(Self.comicFields) } }"
         }
-        let data: ComicList = try await perform(operation, query: query, variables: ["pagination": pagination])
+        var variables: [String: Any] = ["pagination": pagination]
+        if feed == .recommended {
+            variables["adult"] = mode == .adult
+            variables["contentType"] = mode.rawValue
+        }
+        let data: ComicList = try await perform(operation, query: query, variables: variables)
         return data.comics.compactMap { $0 }.map(normalized)
     }
 
@@ -123,6 +139,117 @@ struct KomiicAPI: Sendable {
         return data.imagesByChapterId.compactMap { $0 }
     }
 
+    func accountID() async throws -> String? {
+        do {
+            let data: AccountIdentityResult = try await perform("accountIdentity", query:
+                "query accountIdentity { account { id } }", variables: [:])
+            return data.account?.id
+        } catch KomiicError.authenticationRequired { return nil }
+    }
+
+    func accountProfile(mode: ComicContentMode? = nil) async throws -> KomiicAccountProfile? {
+        // Account details are shared; reading statistics use the selected site's origin.
+        let selectedMode = mode ?? self.mode
+        let api = selectedMode == self.mode ? self : KomiicAPI(mode: selectedMode, session: session, imageSession: imageSession)
+        let accountData: AccountResult
+        do {
+            accountData = try await api.perform("accountQuery", query: """
+                query accountQuery { account { id nickname email dateCreated profileImageUrl profileText
+                    warningPreferences { tag action } } }
+                """, variables: [:])
+        } catch KomiicError.authenticationRequired { return nil }
+        guard let account = accountData.account else { return nil }
+        let stats: ProfileStatsResult = try await api.perform("profileStats", query: """
+            query profileStats {
+                readingStats { comicsRead chaptersRead favoriteCount bookmarkCount folderCount followingFolderCount
+                    topCategories { id: categoryId name: categoryName count } }
+                getImageLimit { limit usage resetInSeconds }
+                messageStats { totalMessages totalUpvotes }
+            }
+            """, variables: [:])
+        return KomiicAccountProfile(id: account.id, username: account.nickname, email: account.email,
+            dateCreated: account.dateCreated, profileImageURL: account.profileImageUrl, profileText: account.profileText,
+            readComicCount: stats.readingStats.comicsRead, readChapterCount: stats.readingStats.chaptersRead,
+            imageReadCount: stats.getImageLimit.usage, imageReadLimit: stats.getImageLimit.limit,
+            resetAt: Date().addingTimeInterval(TimeInterval(stats.getImageLimit.resetInSeconds) ?? 0),
+            commentCount: stats.messageStats.totalMessages, commentLikes: stats.messageStats.totalUpvotes,
+            favoriteCount: stats.readingStats.favoriteCount, bookmarkCount: stats.readingStats.bookmarkCount,
+            folderCount: stats.readingStats.folderCount, followedFolderCount: stats.readingStats.followingFolderCount,
+            topCategories: stats.readingStats.topCategories, warningPreferences: account.warningPreferences ?? [])
+    }
+
+    func warningPreferences() async throws -> [ContentWarningPreference] {
+        let data: WarningPreferencesResult = try await perform("getWarningPreferences", query:
+            "query getWarningPreferences { account { warningPreferences { tag action } } }", variables: [:])
+        guard let account = data.account else { throw KomiicError.authenticationRequired }
+        return account.warningPreferences ?? []
+    }
+
+    @discardableResult
+    func setWarningPreference(tag: String, action: ContentWarningAction) async throws -> [ContentWarningPreference] {
+        let data: SetWarningResult = try await perform("setWarningPreference", query: """
+            mutation setWarningPreference($tag: String!, $action: WarningAction) {
+                setWarningPreference(tag: $tag, action: $action) { warningPreferences { tag action } }
+            }
+            """, variables: ["tag": tag, "action": action == .show ? NSNull() : action.rawValue as Any])
+        return data.setWarningPreference.warningPreferences ?? []
+    }
+
+    func comics(ids: [String]) async throws -> [Comic] {
+        guard !ids.isEmpty else { return [] }
+        let data: ComicList = try await perform("comicByIds", query:
+            "query comicByIds($comicIds: [ID]!) { comics: comicByIds(comicIds: $comicIds) { \(Self.comicFields) } }",
+            variables: ["comicIds": ids])
+        let byID = Dictionary(data.comics.compactMap { $0 }.map { ($0.id, normalized($0)) }, uniquingKeysWith: { first, _ in first })
+        return ids.compactMap { byID[$0] }
+    }
+
+    func favorites(offset: Int = 0) async throws -> [Comic] {
+        let data: FavoritesResult = try await perform("favoritesQuery", query: """
+            query favoritesQuery($pagination: Pagination!) {
+                favoritesV2(pagination: $pagination) { comicId }
+            }
+            """, variables: ["pagination": ["limit": Self.pageSize, "offset": max(0, offset),
+                "orderBy": "FAVORITE_ADDED", "asc": false]])
+        return try await comics(ids: data.favoritesV2.compactMap { $0?.comicId })
+    }
+
+    func readingHistory(offset: Int = 0) async throws -> [OfficialReadingHistory] {
+        let data: HistoryResult = try await perform("readComicHistory", query: """
+            query readComicHistory($pagination: Pagination!) {
+                readComicHistory(pagination: $pagination) { comicId lastDate chapters { chapterId page updatedAt } }
+            }
+            """, variables: ["pagination": ["limit": Self.pageSize, "offset": max(0, offset),
+                "orderBy": "DATE_UPDATED", "asc": false]])
+        let rows = data.readComicHistory.compactMap { $0 }
+        let loaded = try await comics(ids: rows.map(\.comicId))
+        let byID = Dictionary(loaded.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        return rows.compactMap { row in
+            guard let comic = byID[row.comicId] else { return nil }
+            return OfficialReadingHistory(comic: comic, chapters: row.chapters.compactMap { $0 }, lastDate: row.lastDate)
+        }
+    }
+
+    func setFavorite(comicID: String, isFavorite: Bool) async throws {
+        if isFavorite {
+            let _: AddFavoriteResult = try await perform("addFavorite", query:
+                "mutation addFavorite($comicId: ID!) { addFavorite(comicId: $comicId) { comicId } }",
+                variables: ["comicId": comicID])
+        } else {
+            let _: MutationResult = try await perform("removeFavorite", query:
+                "mutation removeFavorite($comicId: ID!) { removeFavorite(comicId: $comicId) }",
+                variables: ["comicId": comicID])
+        }
+    }
+
+    func recordProgress(comicID: String, chapterID: String, page: Int) async throws {
+        let _: MutationResult = try await perform("addReadComicHistoryV2", query: """
+            mutation addReadComicHistoryV2($comicId: ID!, $chapterId: ID!, $page: Int!) {
+                addReadComicHistoryV2(comicId: $comicId, chapterId: $chapterId, page: $page)
+            }
+            """, variables: ["comicId": comicID, "chapterId": chapterID, "page": max(0, page)])
+    }
+
     /// Tickets are requested only when an image is needed, preserving the server's quota rules.
     func imageRequest(for page: ComicPage) async throws -> URLRequest {
         try await ticketRequest(kid: page.kid, refreshing: false)
@@ -146,7 +273,7 @@ struct KomiicAPI: Sendable {
 
     func diagnose() async throws -> String {
         let comics = try await catalog(feed: .updated)
-        return "已连接 \(baseURL.host ?? "Komiic")，成功读取 \(comics.count) 部漫画。"
+        return "������ \(baseURL.host ?? "Komiic")���ɹ���ȡ \(comics.count) ��������"
     }
 
     private func ticketRequest(kid: String, refreshing: Bool) async throws -> URLRequest {
@@ -176,6 +303,8 @@ struct KomiicAPI: Sendable {
         let decoder = JSONDecoder()
         // Inspect errors first: nullable partial GraphQL data may not match the success type.
         if let error = (try? decoder.decode(GraphQLProblems.self, from: data))?.errors?.first {
+            // The current official service uses this message without an extensions code.
+            if error.message.lowercased() == "no token" { throw KomiicError.authenticationRequired }
             switch error.extensions?.code {
             case "QUOTA_EXCEEDED": throw KomiicError.imageQuotaExceeded
             case "UNAUTHENTICATED", "FORBIDDEN": throw KomiicError.authenticationRequired
@@ -236,6 +365,7 @@ struct KomiicAPI: Sendable {
     private static let comicFields = """
         id title status imageUrl authors { id name } categories { id name }
         dateUpdated monthViews views favoriteCount lastBookUpdate lastChapterUpdate
+        contentType warnings
         """
 }
 
@@ -244,8 +374,23 @@ struct KomiicAPI: Sendable {
 private actor SessionRefreshCoordinator {
     static let shared = SessionRefreshCoordinator()
     private var inFlight: [String: Task<Void, Error>] = [:]
+    private var clearingSessions = 0
+
+    func beginClearingSession() async {
+        clearingSessions += 1
+        let requests = Array(inFlight.values)
+        requests.forEach { $0.cancel() }
+        // A cancelled URLSession request must finish before callers erase the cookies,
+        // otherwise a delayed refresh response could recreate a signed-out session.
+        for request in requests { _ = await request.result }
+    }
+
+    func endClearingSession() {
+        clearingSessions = max(0, clearingSessions - 1)
+    }
 
     func refreshIfNeeded(baseURL: URL, session: URLSession, request: URLRequest) async throws {
+        guard clearingSessions == 0 else { throw KomiicError.authenticationRequired }
         let key = "\(baseURL.scheme ?? "https")://\(baseURL.host ?? ""):\(baseURL.port ?? 443)"
         if let pending = inFlight[key] {
             try await pending.value
@@ -303,3 +448,69 @@ private struct TicketResult: Decodable {
     let ticket: Ticket?
     struct Ticket: Decodable { let url: URL; let ticket: String; let kid: String }
 }
+
+private struct AccountResult: Decodable {
+    let account: Account?
+    struct Account: Decodable {
+        let id: String
+        let nickname: String
+        let email: String
+        let dateCreated: String
+        let profileImageUrl: URL?
+        let profileText: String?
+        let warningPreferences: [ContentWarningPreference]?
+    }
+}
+private struct AccountIdentityResult: Decodable {
+    let account: Identity?
+    struct Identity: Decodable { let id: String }
+}
+private struct ProfileStatsResult: Decodable {
+    let readingStats: ReadingStats
+    let getImageLimit: ImageLimit
+    let messageStats: MessageStats
+    struct ReadingStats: Decodable {
+        let comicsRead: Int
+        let chaptersRead: Int
+        let favoriteCount: Int
+        let bookmarkCount: Int
+        let folderCount: Int
+        let followingFolderCount: Int
+        let topCategories: [ProfileCategoryCount]
+    }
+    struct ImageLimit: Decodable {
+        let limit: Int
+        let usage: Int
+        let resetInSeconds: String
+        enum CodingKeys: String, CodingKey { case limit, usage, resetInSeconds }
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            limit = try c.decode(Int.self, forKey: .limit)
+            usage = try c.decode(Int.self, forKey: .usage)
+            if let value = try? c.decode(String.self, forKey: .resetInSeconds) { resetInSeconds = value }
+            else { resetInSeconds = String(try c.decode(Int.self, forKey: .resetInSeconds)) }
+        }
+    }
+    struct MessageStats: Decodable {
+        let totalMessages: Int
+        let totalUpvotes: Int
+    }
+}
+private struct WarningPreferencesResult: Decodable {
+    let account: Preferences?
+}
+private struct SetWarningResult: Decodable { let setWarningPreference: Preferences }
+private struct Preferences: Decodable { let warningPreferences: [ContentWarningPreference]? }
+private struct FavoriteRow: Decodable { let comicId: String }
+private struct FavoritesResult: Decodable { let favoritesV2: [FavoriteRow?] }
+private struct AddFavoriteResult: Decodable { let addFavorite: FavoriteRow }
+private struct HistoryResult: Decodable {
+    let readComicHistory: [Row?]
+    struct Row: Decodable {
+        let comicId: String
+        let lastDate: String?
+        let chapters: [OfficialChapterProgress?]
+    }
+}
+/// The official progress/remove mutations return scalars whose value is not needed here.
+private struct MutationResult: Decodable {}

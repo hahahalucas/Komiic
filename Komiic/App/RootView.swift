@@ -2,17 +2,19 @@ import SwiftUI
 import UserNotifications
 
 enum AppTab: String, CaseIterable, Identifiable {
-    case home, favorites, library
+    case home, favorites, library, account
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .home: return "首页"; case .favorites: return "喜爱"; case .library: return "资料库"
+        case .home: return "��ҳ"; case .favorites: return "ϲ��"; case .library: return "���Ͽ�"
+        case .account: return "�˺�"
         }
     }
     var symbol: String {
         switch self {
         case .home: return "square.grid.2x2"; case .favorites: return "heart"
         case .library: return "books.vertical"
+        case .account: return "person.crop.circle"
         }
     }
 }
@@ -22,8 +24,10 @@ private enum LibrarySection: String {
 }
 
 private enum SearchRoute: Hashable {
-    case search
+    case results(String)
 }
+
+private enum MenuRoute: Hashable { case blocked, warnings }
 
 struct RootView: View {
     @EnvironmentObject private var library: LibraryStore
@@ -33,8 +37,7 @@ struct RootView: View {
     @State private var selected: AppTab = .home
     @State private var paths: [AppTab: NavigationPath] = [:]
     @State private var librarySection: LibrarySection = .bookmarks
-    @State private var account = false
-    @State private var notifications = false
+    @State private var searchPrompt = false
     @State private var seenCompleted: Set<String> = []
     @State private var started = false
 
@@ -48,14 +51,31 @@ struct RootView: View {
                 classicTabs
             }
         }
-        .sheet(isPresented: $account) { AccountView() }
-        .sheet(isPresented: $notifications) { ActivityView() }
-        .alert("未能完成操作", isPresented: Binding(get: { library.lastError != nil || downloads.lastError != nil }, set: { visible in
+        .accessibilityHidden(searchPrompt)
+        .overlay {
+            if searchPrompt {
+                SearchPromptView(onCancel: { searchPrompt = false }, onSearch: { keyword in
+                    searchPrompt = false
+                    var path = paths[selected] ?? NavigationPath()
+                    path.append(SearchRoute.results(keyword))
+                    paths[selected] = path
+                })
+            }
+        }
+        .id(settings.contentMode)
+        .onChange(of: settings.contentMode) { _, mode in
+            library.selectMode(mode)
+            paths = [:]
+            selected = .home
+            searchPrompt = false
+        }
+        .alert("δ����ɲ���", isPresented: Binding(get: { library.lastError != nil || downloads.lastError != nil }, set: { visible in
             if !visible { library.lastError = nil; downloads.lastError = nil }
         })) {
-            Button("知道了") { library.lastError = nil; downloads.lastError = nil }
-        } message: { Text(library.lastError ?? downloads.lastError ?? "请稍后重试。") }
+            Button("֪����") { library.lastError = nil; downloads.lastError = nil }
+        } message: { Text(library.lastError ?? downloads.lastError ?? "���Ժ����ԡ�") }
         .task { seenCompleted = completedIDs; started = true }
+        .task(id: settings.contentMode) { await refreshOfficialData() }
         .onChange(of: completedIDs) { _, ids in
             guard started else { return }
             let newIDs = ids.subtracting(seenCompleted)
@@ -64,15 +84,15 @@ struct RootView: View {
             for id in newIDs {
                 guard let item = downloads.items.first(where: { $0.id == id }) else { continue }
                 let content = UNMutableNotificationContent()
-                content.title = "章节下载完成"
-                content.body = "\(item.comic.title) · \(item.chapter.displayTitle)"
+                content.title = "�½��������"
+                content.body = "\(item.comic.title) �� \(item.chapter.displayTitle)"
                 content.sound = .default
                 UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: "download-\(id)", content: content, trigger: nil)) { _ in }
             }
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
-                Task { await WebCookieBridge.synchronize() }
+                Task { await refreshOfficialData() }
                 downloads.applyCachePolicy(settings.cachePolicy)
             }
         }
@@ -82,9 +102,10 @@ struct RootView: View {
     @available(iOS 18.0, *)
     private var modernTabs: some View {
         TabView(selection: $selected) {
-            Tab("首页", systemImage: AppTab.home.symbol, value: AppTab.home) { screen(.home) }
-            Tab("喜爱", systemImage: AppTab.favorites.symbol, value: AppTab.favorites) { screen(.favorites) }
-            Tab("资料库", systemImage: AppTab.library.symbol, value: AppTab.library) { screen(.library) }
+            Tab("��ҳ", systemImage: AppTab.home.symbol, value: AppTab.home) { screen(.home) }
+            Tab("ϲ��", systemImage: AppTab.favorites.symbol, value: AppTab.favorites) { screen(.favorites) }
+            Tab("���Ͽ�", systemImage: AppTab.library.symbol, value: AppTab.library) { screen(.library) }
+            Tab("�˺�", systemImage: AppTab.account.symbol, value: AppTab.account) { screen(.account) }
         }
         .tabViewStyle(.tabBarOnly)
     }
@@ -98,6 +119,16 @@ struct RootView: View {
     }
 
     private var completedIDs: Set<String> { Set(downloads.items.filter { $0.status == .completed }.map(\.id)) }
+
+    @MainActor private func refreshOfficialData() async {
+        let mode = settings.contentMode
+        await WebCookieBridge.synchronize()
+        guard !Task.isCancelled, settings.contentMode == mode else { return }
+        await library.refreshOfficialLibrary()
+        guard !Task.isCancelled, settings.contentMode == mode else { return }
+        await settings.syncWarningPreferences(mode: mode)
+    }
+
     private func screen(_ tab: AppTab) -> some View {
         TabRootScreen(tab: tab, librarySection: $librarySection,
                       path: Binding(get: { paths[tab] ?? NavigationPath() }, set: { paths[tab] = $0 }),
@@ -108,7 +139,10 @@ struct RootView: View {
                           paths[.home] = homePath
                           selected = .home
                       },
-                      showAccount: { account = true }, showNotifications: { notifications = true })
+                      openFavorites: { paths[.favorites] = NavigationPath(); selected = .favorites },
+                      openBookmarks: { paths[.library] = NavigationPath(); librarySection = .bookmarks; selected = .library },
+                      openShelves: { paths[.library] = NavigationPath(); librarySection = .shelves; selected = .library },
+                      showSearch: { searchPrompt = true })
     }
 }
 
@@ -117,27 +151,55 @@ private struct TabRootScreen: View {
     @Binding var librarySection: LibrarySection
     @Binding var path: NavigationPath
     let openSearchResult: (Comic) -> Void
-    let showAccount: () -> Void
-    let showNotifications: () -> Void
+    let openFavorites: () -> Void
+    let openBookmarks: () -> Void
+    let openShelves: () -> Void
+    let showSearch: () -> Void
+    @EnvironmentObject private var settings: ReaderSettings
+    @EnvironmentObject private var library: LibraryStore
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         NavigationStack(path: $path) {
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(KomiicTheme.canvas)
-                .navigationTitle(tab.title)
+                .navigationTitle(settings.contentMode == .adult ? "H ���� �� \(tab.title)" : tab.title)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItemGroup(placement: .topBarTrailing) {
-                        NavigationLink(value: SearchRoute.search) { Image(systemName: "magnifyingglass") }.accessibilityLabel("搜索漫画")
-                        Button(action: showNotifications) { Image(systemName: "bell") }.accessibilityLabel("阅读动态")
-                        Button(action: showAccount) { Image(systemName: "person.crop.circle") }.accessibilityLabel("账号与设置")
+                        Button(action: showSearch) { Image(systemName: "magnifyingglass") }
+                            .accessibilityLabel("��������")
+                        Menu {
+                            NavigationLink(value: MenuRoute.blocked) { Label("��������", systemImage: "eye.slash") }
+                            NavigationLink(value: MenuRoute.warnings) { Label("���ݾ���ƫ��", systemImage: "shield") }
+                            Divider()
+                            Button {
+                                let mode: ComicContentMode = settings.contentMode == .general ? .adult : .general
+                                library.selectMode(mode)
+                                settings.contentMode = mode
+                            } label: {
+                                Label(settings.contentMode == .general ? "�л��� H ���� �� 18+" : "�л���һ������", systemImage: "arrow.triangle.2.circlepath")
+                            }
+                            Button {
+                                settings.theme = colorScheme == .dark ? .light : .dark
+                            } label: { Label("�л�����", systemImage: colorScheme == .dark ? "sun.max" : "moon") }
+                        } label: { Image(systemName: "person.crop.circle") }
+                        .accessibilityLabel("���๦��")
                     }
                 }
                 .navigationDestination(for: Comic.self) { ComicDetailView(comic: $0) }
                 .navigationDestination(for: ComicAuthor.self) { AuthorView(author: $0) }
-                .navigationDestination(for: SearchRoute.self) { _ in
-                    SearchView(onSelect: openSearchResult)
+                .navigationDestination(for: SearchRoute.self) { route in
+                    switch route {
+                    case .results(let keyword): SearchView(initialKeyword: keyword, onSelect: openSearchResult)
+                    }
+                }
+                .navigationDestination(for: MenuRoute.self) { route in
+                    switch route {
+                    case .blocked: BlockedComicsView()
+                    case .warnings: ContentWarningPreferencesView()
+                    }
                 }
         }
         .environment(\.openAuthor) { path.append($0) }
@@ -147,11 +209,12 @@ private struct TabRootScreen: View {
         switch tab {
         case .home: CatalogView()
         case .favorites: FavoritesView()
+        case .account: AccountView(onOpenFavorites: openFavorites, onOpenBookmarks: openBookmarks, onOpenShelves: openShelves)
         case .library:
             VStack(spacing: 0) {
-                Picker("资料库", selection: $librarySection) {
-                    Text("书签").tag(LibrarySection.bookmarks)
-                    Text("书柜").tag(LibrarySection.shelves)
+                Picker("���Ͽ�", selection: $librarySection) {
+                    Text("��ǩ").tag(LibrarySection.bookmarks)
+                    Text("���").tag(LibrarySection.shelves)
                 }
                 .pickerStyle(.segmented)
                 .padding(.horizontal, 18).padding(.vertical, 12)

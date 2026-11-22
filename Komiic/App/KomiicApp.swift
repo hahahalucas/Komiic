@@ -20,9 +20,15 @@ struct KomiicApp: App {
 
 @MainActor
 private struct AppContainerView: View {
-    @StateObject private var library = LibraryStore()
+    @StateObject private var library: LibraryStore
     @StateObject private var downloads = DownloadStore()
-    @StateObject private var settings = ReaderSettings()
+    @StateObject private var settings: ReaderSettings
+
+    init() {
+        let settings = ReaderSettings()
+        _settings = StateObject(wrappedValue: settings)
+        _library = StateObject(wrappedValue: LibraryStore(initialMode: settings.contentMode))
+    }
 
     var body: some View {
             RootView()

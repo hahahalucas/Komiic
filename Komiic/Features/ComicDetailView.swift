@@ -4,6 +4,7 @@ struct ComicDetailView: View {
     let comic: Comic
     @EnvironmentObject private var library: LibraryStore
     @EnvironmentObject private var downloads: DownloadStore
+    @EnvironmentObject private var settings: ReaderSettings
     @Environment(\.openAuthor) private var openAuthor
     @State private var detail: Comic?
     @State private var chapters: [Chapter] = []
@@ -33,7 +34,7 @@ struct ComicDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 HStack(alignment: .top, spacing: 20) {
-                    RemoteImage(url: displayedComic.imageUrl, aspectRatio: 0.72)
+                    ComicCover(comic: displayedComic)
                         .frame(width: 128).clipShape(RoundedRectangle(cornerRadius: 14))
                         .shadow(color: .black.opacity(0.10), radius: 12, y: 6)
                     VStack(alignment: .leading, spacing: 12) {
@@ -60,14 +61,14 @@ struct ComicDetailView: View {
                 }
                 HStack(spacing: 10) {
                     Button { startReading() } label: {
-                        Label(library.progress(for: comic.id) == nil ? "开始阅读" : "继续阅读", systemImage: "book")
+                        Label(library.progress(for: comic.id) == nil ? "��ʼ�Ķ�" : "�����Ķ�", systemImage: "book")
                             .font(.subheadline.bold()).frame(maxWidth: .infinity).padding(.vertical, 7)
                     }.komiicActionStyle(prominent: true).disabled(chapters.isEmpty && library.progress(for: comic.id) == nil)
                     Button { library.toggleFavorite(displayedComic) } label: {
                         Image(systemName: library.isFavorite(comic) ? "heart.fill" : "heart").padding(.vertical, 7)
-                    }.komiicActionStyle().accessibilityLabel(library.isFavorite(comic) ? "取消喜爱" : "加入喜爱")
+                    }.komiicActionStyle().accessibilityLabel(library.isFavorite(comic) ? "ȡ��ϲ��" : "����ϲ��")
                     Button { addingToShelf = true } label: { Image(systemName: "books.vertical").padding(.vertical, 7) }
-                        .komiicActionStyle().accessibilityLabel("加入书柜")
+                        .komiicActionStyle().accessibilityLabel("�������")
                 }
                 if !displayedComic.categories.isEmpty {
                     ScrollView(.horizontal, showsIndicators: false) {
@@ -81,25 +82,25 @@ struct ComicDetailView: View {
                 }
                 if let description = displayedComic.description, !description.isEmpty {
                     VStack(alignment: .leading, spacing: 10) {
-                        SectionHeading(title: "故事简介")
+                        SectionHeading(title: "���¼��")
                         Text(description).font(.subheadline).foregroundStyle(.secondary).lineSpacing(6)
                     }
                 }
                 contentRating
                 HStack {
-                    SectionHeading(title: "章节目录", subtitle: "共 \(chapters.count) 章")
+                    SectionHeading(title: "�½�Ŀ¼", subtitle: "�� \(chapters.count) ��")
                     Button { ascending.toggle() } label: { Image(systemName: "arrow.up.arrow.down") }
-                        .accessibilityLabel("切换章节排序")
+                        .accessibilityLabel("�л��½�����")
                 }
                 if loading { ProgressView().frame(maxWidth: .infinity).padding(20) }
                 if let error {
                     VStack(alignment: .leading, spacing: 10) {
                         Label(error, systemImage: "wifi.exclamationmark").font(.caption).foregroundStyle(.secondary)
-                        Button("重新载入") { retry += 1 }.font(.subheadline)
+                        Button("��������") { retry += 1 }.font(.subheadline)
                     }.padding(14).komiicCard()
                 }
                 if !chapterTypes.isEmpty {
-                    Picker("卷与话", selection: $chapterType) {
+                    Picker("���뻰", selection: $chapterType) {
                         ForEach(chapterTypes, id: \.self) { type in
                             Text(chapterTypeTitle(type)).tag(type)
                         }
@@ -117,28 +118,28 @@ struct ComicDetailView: View {
                                     .background(KomiicTheme.card, in: RoundedRectangle(cornerRadius: 10))
                                     .overlay(RoundedRectangle(cornerRadius: 10).stroke(KomiicTheme.line, lineWidth: 1))
                             }.buttonStyle(.plain)
-                                .accessibilityLabel("展开隐藏的 \(hidden.count) 个章节")
+                                .accessibilityLabel("չ�����ص� \(hidden.count) ���½�")
                         }
                     }
                 }
                 if expandedTypes.contains(chapterType) {
                     Button { expandedTypes.remove(chapterType) } label: {
-                        Label("收起章节", systemImage: "eye.slash").font(.caption)
+                        Label("�����½�", systemImage: "eye.slash").font(.caption)
                     }
                 }
-                Link(destination: URL(string: "https://komiic.cc/comic/\(comic.id)")!) {
-                    Label("在 Komiic 官网查看", systemImage: "arrow.up.right.square").font(.caption)
+                Link(destination: KomiicAPI(mode: settings.contentMode).baseURL.appendingPathComponent("comic/\(comic.id)")) {
+                    Label("�� Komiic �����鿴", systemImage: "arrow.up.right.square").font(.caption)
                 }.padding(.top, 8)
             }.padding(20).padding(.bottom, library.progress(for: comic.id) == nil ? 0 : 88)
                 .frame(maxWidth: 960).frame(maxWidth: .infinity)
         }
         .background(KomiicTheme.canvas)
-        .navigationTitle("漫画详情").navigationBarTitleDisplayMode(.inline)
+        .navigationTitle("��������").navigationBarTitleDisplayMode(.inline)
         .toolbar(.visible, for: .navigationBar)
         .toolbar {
             Menu {
-                ShareLink(item: URL(string: "https://komiic.cc/comic/\(comic.id)")!)
-                Button("屏蔽漫画", systemImage: "eye.slash", role: .destructive) { library.toggleBlocked(comic) }
+                ShareLink(item: KomiicAPI(mode: settings.contentMode).baseURL.appendingPathComponent("comic/\(comic.id)"))
+                Button("��������", systemImage: "eye.slash", role: .destructive) { library.toggleBlocked(comic) }
             } label: { Image(systemName: "ellipsis.circle") }
         }
         .task(id: retry) { await load() }
@@ -146,14 +147,14 @@ struct ComicDetailView: View {
             if let progress = library.progress(for: comic.id) {
                 Button { startReading() } label: {
                     VStack(alignment: .leading, spacing: 5) {
-                        Label("继续阅读", systemImage: "book.fill").font(.subheadline.bold())
-                        Text("\(progress.chapter.displayTitle) · 第 \(progress.page + 1) 页")
+                        Label("�����Ķ�", systemImage: "book.fill").font(.subheadline.bold())
+                        Text("\(progress.chapter.displayTitle) �� �� \(progress.page + 1) ҳ")
                             .font(.caption).lineLimit(1)
                     }.padding(.horizontal, 16).padding(.vertical, 12)
                         .foregroundStyle(KomiicTheme.accent)
                         .komiicGlass(cornerRadius: 18, interactive: true)
                 }.buttonStyle(.plain).padding(.trailing, 20).padding(.bottom, 10)
-                    .accessibilityLabel("继续阅读，\(progress.chapter.displayTitle)，第 \(progress.page + 1) 页")
+                    .accessibilityLabel("�����Ķ���\(progress.chapter.displayTitle)���� \(progress.page + 1) ҳ")
             }
         }
         .fullScreenCover(item: $launch, onDismiss: resetDirectory) { item in
@@ -166,8 +167,9 @@ struct ComicDetailView: View {
         loading = true; error = nil
         if chapters.isEmpty { chapters = downloads.items.filter { $0.comic.id == comic.id }.map(\.chapter) }
         do {
-            async let comicResult = KomiicAPI().comic(id: comic.id)
-            async let chapterResult = KomiicAPI().chapters(comicID: comic.id)
+            let api = KomiicAPI(mode: settings.contentMode)
+            async let comicResult = api.comic(id: comic.id)
+            async let chapterResult = api.chapters(comicID: comic.id)
             let results = try await (comicResult, chapterResult)
             try Task.checkCancellation()
             detail = results.0; chapters = results.1
@@ -177,7 +179,7 @@ struct ComicDetailView: View {
         resetDirectory()
     }
     private var authorLinks: AttributedString {
-        guard !displayedComic.authors.isEmpty else { return AttributedString("漫画作品") }
+        guard !displayedComic.authors.isEmpty else { return AttributedString("������Ʒ") }
         var result = AttributedString()
         for (index, name) in displayedComic.authors.enumerated() {
             if index > 0 { result += AttributedString(" / ") }
@@ -189,29 +191,29 @@ struct ComicDetailView: View {
     }
     private var contentRating: some View {
         VStack(alignment: .leading, spacing: 10) {
-            SectionHeading(title: "色情程度")
+            SectionHeading(title: "ɫ��̶�")
             if let level = displayedComic.sexyLevel {
                 HStack(spacing: 8) {
                     ForEach(0..<5, id: \.self) { index in
                         Image(systemName: index < min(max(level, 0), 5) ? "heart.fill" : "heart")
                             .font(.title3).foregroundStyle(.red)
                     }
-                    Text(level == 0 ? "无" : "\(level) / 5").font(.caption).foregroundStyle(.secondary)
+                    Text(level == 0 ? "��" : "\(level) / 5").font(.caption).foregroundStyle(.secondary)
                 }.accessibilityElement(children: .ignore)
-                    .accessibilityLabel(level == 0 ? "色情程度：无" : "色情程度：\(level) 级，共 5 级")
+                    .accessibilityLabel(level == 0 ? "ɫ��̶ȣ���" : "ɫ��̶ȣ�\(level) ������ 5 ��")
                 if let reason = displayedComic.sexyLevelReason, !reason.isEmpty {
                     Text(reason).font(.subheadline).foregroundStyle(.secondary).lineSpacing(6)
                 }
             } else {
-                Text("暂无评级").font(.subheadline).foregroundStyle(.secondary)
+                Text("��������").font(.subheadline).foregroundStyle(.secondary)
             }
         }
     }
     private func chapterTypeTitle(_ type: String) -> String {
         switch type {
-        case "book": return "卷"
-        case "chapter": return "话"
-        case "short": return "短篇"
+        case "book": return "��"
+        case "chapter": return "��"
+        case "short": return "��ƪ"
         default: return type
         }
     }
@@ -233,7 +235,7 @@ struct ComicDetailView: View {
             VStack(spacing: 5) {
                 Text(chapter.serial.isEmpty ? chapter.displayTitle : chapter.serial)
                     .font(.subheadline.weight(.medium)).lineLimit(1).minimumScaleFactor(0.7)
-                Text("\(chapter.size) 页").font(.caption2).foregroundStyle(.secondary)
+                Text("\(chapter.size) ҳ").font(.caption2).foregroundStyle(.secondary)
             }.frame(maxWidth: .infinity, minHeight: 64)
                 .foregroundStyle(read ? Color.secondary : KomiicTheme.accent)
                 .background(read ? Color.primary.opacity(0.15) : KomiicTheme.card,
@@ -248,10 +250,10 @@ struct ComicDetailView: View {
                     }
                 }
         }.buttonStyle(.plain)
-            .accessibilityLabel("\(chapter.displayTitle)，\(chapter.size) 页，\(read ? "已读" : "未读")")
+            .accessibilityLabel("\(chapter.displayTitle)��\(chapter.size) ҳ��\(read ? "�Ѷ�" : "δ��")")
             .contextMenu {
                 Button { scheduleDownload(chapter) } label: {
-                    Label(downloads.isDownloaded(chapterID: chapter.id) ? "已下载" : "下载本章", systemImage: "arrow.down.circle")
+                    Label(downloads.isDownloaded(chapterID: chapter.id) ? "������" : "���ر���", systemImage: "arrow.down.circle")
                 }.disabled(scheduling.contains(chapter.id) || downloads.isDownloaded(chapterID: chapter.id))
             }
     }
@@ -266,8 +268,9 @@ struct ComicDetailView: View {
         scheduling.insert(chapter.id)
         Task {
             do {
-                let pages = try await KomiicAPI().pages(chapterID: chapter.id)
-                await downloads.download(comic: displayedComic, chapter: chapter, pages: pages, baseURL: URL(string: "https://komiic.cc")!)
+                let api = KomiicAPI(mode: settings.contentMode)
+                let pages = try await api.pages(chapterID: chapter.id)
+                await downloads.download(comic: displayedComic, chapter: chapter, pages: pages, baseURL: api.baseURL)
             } catch { self.error = error.localizedDescription }
             scheduling.remove(chapter.id)
         }
@@ -282,22 +285,22 @@ private struct AddToShelfView: View {
     var body: some View {
         NavigationStack {
             List {
-                Section("选择书柜") {
+                Section("ѡ�����") {
                     ForEach(library.shelves) { shelf in
                         Button { library.addToShelf(comic, shelfID: shelf.id); dismiss() } label: {
                             Label(shelf.name, systemImage: "books.vertical")
                         }
                     }
                 }
-                Section("新建书柜") {
-                    TextField("书柜名称", text: $name)
-                    Button("创建并加入") {
+                Section("�½����") {
+                    TextField("�������", text: $name)
+                    Button("����������") {
                         if let shelf = library.createShelf(name: name) { library.addToShelf(comic, shelfID: shelf.id); dismiss() }
                     }.disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
-            .navigationTitle("加入书柜").navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("完成") { dismiss() } } }
+            .navigationTitle("�������").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("���") { dismiss() } } }
         }
     }
 }

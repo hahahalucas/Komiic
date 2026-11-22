@@ -5,10 +5,10 @@ enum CatalogFeed: String, CaseIterable, Identifiable, Sendable {
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .updated: return "最新更新"
-        case .newest: return "最近上架"
-        case .popular: return "当月最热"
-        case .recommended: return "推荐漫画"
+        case .updated: return "���¸���"
+        case .newest: return "����ϼ�"
+        case .popular: return "��������"
+        case .recommended: return "�Ƽ�����"
         }
     }
 }
@@ -19,13 +19,13 @@ enum ContentFilter: Int, CaseIterable, Identifiable, Codable, Sendable {
     var id: Int { rawValue }
     var title: String {
         switch self {
-        case .all: return "全部"
-        case .general: return "无"
-        case .suggestive: return "1 级"
-        case .levelTwo: return "2 级"
-        case .levelThree: return "3 级"
-        case .levelFour: return "4 级及以上"
-        case .explicit: return "5 级"
+        case .all: return "ȫ��"
+        case .general: return "��"
+        case .suggestive: return "1 ��"
+        case .levelTwo: return "2 ��"
+        case .levelThree: return "3 ��"
+        case .levelFour: return "4 ��������"
+        case .explicit: return "5 ��"
         }
     }
 }
@@ -61,12 +61,16 @@ struct Comic: Codable, Hashable, Identifiable, Sendable {
     var dateUpdated: String?
     var sexyLevel: Int?
     var sexyLevelReason: String?
+    var contentType: String?
+    var warnings: [String]
+    var contentMode: ComicContentMode { ComicContentMode(rawValue: contentType ?? "") ?? .general }
 
     init(id: String, title: String, imageUrl: URL? = nil, status: String = "ONGOING",
          description: String? = nil, authors: [String] = [], categories: [String] = [],
          views: Int = 0, monthViews: Int = 0, favoriteCount: Int = 0,
          lastChapterUpdate: String? = nil, lastBookUpdate: String? = nil, dateUpdated: String? = nil,
-         authorDetails: [ComicAuthor] = [], sexyLevel: Int? = nil, sexyLevelReason: String? = nil) {
+         authorDetails: [ComicAuthor] = [], sexyLevel: Int? = nil, sexyLevelReason: String? = nil,
+         contentType: String? = nil, warnings: [String] = []) {
         self.id = id; self.title = title; self.imageUrl = imageUrl; self.status = status
         self.description = description; self.authors = authors; self.categories = categories
         self.views = views; self.monthViews = monthViews; self.favoriteCount = favoriteCount
@@ -75,11 +79,13 @@ struct Comic: Codable, Hashable, Identifiable, Sendable {
         self.authorDetails = authorDetails
         if self.authors.isEmpty { self.authors = authorDetails.map(\.name) }
         self.sexyLevel = sexyLevel; self.sexyLevelReason = sexyLevelReason
+        self.contentType = contentType; self.warnings = warnings
     }
 
     enum CodingKeys: String, CodingKey {
         case id, title, imageUrl, status, description, authors, categories, views, monthViews
         case favoriteCount, lastChapterUpdate, lastBookUpdate, dateUpdated, authorDetails, sexyLevel, sexyLevelReason
+        case contentType, warnings
     }
 
     init(from decoder: Decoder) throws {
@@ -102,6 +108,8 @@ struct Comic: Codable, Hashable, Identifiable, Sendable {
         dateUpdated = c.flexibleString(.dateUpdated)
         sexyLevel = c.flexibleString(.sexyLevel).flatMap(Int.init)
         sexyLevelReason = c.flexibleString(.sexyLevelReason)
+        contentType = c.flexibleString(.contentType)
+        warnings = (try? c.decode([String].self, forKey: .warnings)) ?? []
     }
 
 }
@@ -130,9 +138,9 @@ struct Chapter: Codable, Hashable, Identifiable, Sendable {
 
     private static func makeTitle(serial: String, type: String) -> String {
         switch type {
-        case "book": return "第 \(serial) 卷"
-        case "short": return serial.isEmpty ? "短篇" : "短篇 \(serial)"
-        default: return "第 \(serial) 话"
+        case "book": return "�� \(serial) ��"
+        case "short": return serial.isEmpty ? "��ƪ" : "��ƪ \(serial)"
+        default: return "�� \(serial) ��"
         }
     }
 }

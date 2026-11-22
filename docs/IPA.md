@@ -1,81 +1,83 @@
-# iPhone 与 iPad IPA 构建
+# iPhone �� iPad IPA ����
 
-此流程会使用 Apple 的真实设备编译器生成 arm64 App，再打包为 IPA。同一份 App 同时声明 iPhone 与 iPad 支持；iOS / iPadOS 26 使用 Liquid Glass，较旧系统使用代码中的兼容外观。最低系统保持 iOS / iPadOS 17。
+�����̻�ʹ�� Apple ����ʵ�豸���������� arm64 App���ٴ��Ϊ IPA��ͬһ�� App ͬʱ���� iPhone �� iPad ֧�֣�iOS / iPadOS 26 ʹ�� Liquid Glass���Ͼ�ϵͳʹ�ô����еļ�����ۡ����ϵͳ���� iOS / iPadOS 17��
 
-iPad 不强制全屏，声明全部四个方向以支持系统多任务与可变窗口。窗口中的方向和大小以 iPadOS 的规则为准；阅读方向偏好不能覆盖系统对窗口场景的限制。
+iPad ��ǿ��ȫ��������ȫ���ĸ�������֧��ϵͳ��������ɱ䴰�ڡ������еķ���ʹ�С�� iPadOS �Ĺ���Ϊ׼���Ķ�����ƫ�ò��ܸ���ϵͳ�Դ��ڳ��������ơ�
 
-当前源码为 **3.0（build 3）**，已完成本地静态检查，Mac 云端编译与 36 项 XCTest 待执行。计划在 `codex/komiic-3.0` 独立分支复用本页构建流程；当前尚无已生成或校验的 3.0 IPA。生成后应核对包内版本与 build，再另存为 `Komiic-3.0-iPhone-iPad-unsigned.ipa`，不能将旧包改名作为新版本交付。
+��ǰԴ��Ϊ **0.4.0��build 4��**������ɱ��ع��̼� Swift �﷨��飻��δ���б��汾�� Mac ���롢XCTest �� IPA ���ɡ�������Ӧ�˶԰汾 0.4.0��build 4��������Ϊ Komiic-0.4.0-iPhone-iPad-unsigned.ipa�����ܰѾɰ�������Ϊ�°汾��
 
-以下为 **2.0 历史构建记录**。2.0 已在 [Mac 云端设备版任务](https://github.com/hahahalucas/Komiic/actions/runs/44991028791)中完成编译，项目根目录已保存交付副本 `Komiic-2.0-iPhone-iPad-unsigned.ipa`（版本 2.0、build 2，822,136 字节）。[构建产物](https://github.com/hahahalucas/Komiic/actions/runs/44991028791/artifacts/14742335404)内的 IPA 使用默认文件名；下载后另存为带版本号的交付文件。设备版任务使用 `--skip-tests`，Xcode 26.6 / iOS SDK 26.5 编译与云端、本机 IPA 校验均通过。
+����Ϊ **3.0 ��ʷ������¼**����ʱ����ɱ��ؾ�̬��飬���ϴ��� [`codex/komiic-3.0`](https://github.com/hahahalucas/Komiic/tree/codex/komiic-3.0) ������֧���ύ [`9e9e97414bfaf017e0658f565c748a3b018d40c7`](https://github.com/hahahalucas/Komiic/commit/9e9e97414bfaf017e0658f565c748a3b018d40c7)��[Mac �ƶ˹��� 44999974479](https://github.com/hahahalucas/Komiic/actions/runs/44999974479)���������豸���롢�����豸�� 36 �� XCTest �� IPA �Դ��������ǰ��������֤�� 3.0 �����������ɺ�Ӧ�˶԰��ڰ汾�� build��������Ϊ `Komiic-3.0-iPhone-iPad-unsigned.ipa`�����ܽ��ɰ�������Ϊ�°汾������
 
-同一 App 源码的[独立完整流程](https://github.com/hahahalucas/Komiic/actions/runs/44989974389)也已成功：iPhone 与 iPad 各 18 项测试通过、零失败，生成两种模拟器截图并完成设备版编译。[完整验证产物](https://github.com/hahahalucas/Komiic/actions/runs/44989974389/artifacts/14742196424)包含测试结果、截图和日志，本机证据位置为 `build/verified-artifacts-2.0/`。交付包仍来自上述设备版任务；两次构建的 App 源码完全一致，仅构建工作流有调整。未使用用户证书，安装前需要自行签名。实际滑动交互及真机安装尚未验收。源码、构建提交和 SHA-256 见[验证记录](Verification.md)。根目录原有的无版本号 IPA 是 0.1.0 历史包。
+����Ϊ **2.0 ��ʷ������¼**��2.0 ���� [Mac �ƶ��豸������](https://github.com/hahahalucas/Komiic/actions/runs/44991028791)����ɱ��룬��Ŀ��Ŀ¼�ѱ��潻������ `Komiic-2.0-iPhone-iPad-unsigned.ipa`���汾 2.0��build 2��822,136 �ֽڣ���[��������](https://github.com/hahahalucas/Komiic/actions/runs/44991028791/artifacts/14742335404)�ڵ� IPA ʹ��Ĭ���ļ��������غ�����Ϊ���汾�ŵĽ����ļ����豸������ʹ�� `--skip-tests`��Xcode 26.6 / iOS SDK 26.5 �������ƶˡ����� IPA У���ͨ����
 
-## 输出与安装
+ͬһ App Դ���[������������](https://github.com/hahahalucas/Komiic/actions/runs/44989974389)Ҳ�ѳɹ���iPhone �� iPad �� 18 �����ͨ������ʧ�ܣ���������ģ������ͼ������豸����롣[������֤����](https://github.com/hahahalucas/Komiic/actions/runs/44989974389/artifacts/14742196424)�������Խ������ͼ����־������֤��λ��Ϊ `build/verified-artifacts-2.0/`�������������������豸���������ι����� App Դ����ȫһ�£��������������е�����δʹ���û�֤�飬��װǰ��Ҫ����ǩ����ʵ�ʻ��������������װ��δ���ա�Դ�롢�����ύ�� SHA-256 ��[��֤��¼](Verification.md)����Ŀ¼ԭ�е��ް汾�� IPA �� 0.1.0 ��ʷ����
 
-- 默认生成 `Komiic-iPhone-iPad-unsigned.ipa`。它包含真实 iOS 设备可执行代码，**没有 Apple 安装签名，不能直接安装**。用户需要使用自己的合法证书和对应设备描述文件完成签名。
-- 可选签名构建生成 `Komiic-iPhone-iPad-signed.ipa`。必须提供现有的真实 Apple 证书、密码和描述文件；安装范围由这些资料决定。Ad Hoc / 开发描述文件需要覆盖目标 iPhone 和 iPad 的设备标识。
-- 此流程不创建证书、不注册设备、不上传 App Store，也不把 App Store 描述文件误称为可直接安装的版本。
+## ����밲װ
 
-## 在 Mac 上生成
+- Ĭ������ `Komiic-iPhone-iPad-unsigned.ipa`����������ʵ iOS �豸��ִ�д��룬**û�� Apple ��װǩ��������ֱ�Ӱ�װ**���û���Ҫʹ���Լ��ĺϷ�֤��Ͷ�Ӧ�豸�����ļ����ǩ����
+- ��ѡǩ���������� `Komiic-iPhone-iPad-signed.ipa`�������ṩ���е���ʵ Apple ֤�顢����������ļ�����װ��Χ����Щ���Ͼ�����Ad Hoc / ���������ļ���Ҫ����Ŀ�� iPhone �� iPad ���豸��ʶ��
+- �����̲�����֤�顢��ע���豸�����ϴ� App Store��Ҳ���� App Store �����ļ����Ϊ��ֱ�Ӱ�װ�İ汾��
 
-需要完整 Xcode 26+、iOS SDK 26+，以及已经安装的 iOS 26+ iPhone 和 iPad 模拟器。可以通过 `DEVELOPER_DIR` 选择 Xcode。
+## �� Mac ������
+
+��Ҫ���� Xcode 26+��iOS SDK 26+���Լ��Ѿ���װ�� iOS 26+ iPhone �� iPad ģ����������ͨ�� `DEVELOPER_DIR` ѡ�� Xcode��
 
 ```sh
 bash scripts/build_ipa.sh --unsigned
 ```
 
-脚本依次验证工程、在 iPhone/iPad 模拟器执行 XCTest、退出测试宿主后启动正常 App 并截图，再构建设备 Release 版本、打包和检查 IPA。输出目录为本次独立的 `build/ipa.XXXXXX/artifacts/`，包含 IPA、SHA-256、检查报告、测试结果、截图及构建日志。
+�ű�������֤���̡��� iPhone/iPad ģ����ִ�� XCTest���˳������������������� App ����ͼ���ٹ����豸 Release �汾������ͼ�� IPA�����Ŀ¼Ϊ���ζ����� `build/ipa.XXXXXX/artifacts/`������ IPA��SHA-256����鱨�桢���Խ������ͼ��������־��
 
-已有验证过的构建环境中可以明确跳过重复的模拟器测试：
+������֤���Ĺ��������п�����ȷ�����ظ���ģ�������ԣ�
 
 ```sh
 bash scripts/build_ipa.sh --unsigned --skip-tests
 ```
 
-该选项不会跳过真实设备编译或 IPA 检查，也不会生成截图。没有 Xcode 26+ 时脚本直接失败。
+��ѡ���������ʵ�豸����� IPA ��飬Ҳ�������ɽ�ͼ��û�� Xcode 26+ ʱ�ű�ֱ��ʧ�ܡ�
 
-## GitHub 云端构建
+## GitHub �ƶ˹���
 
-已准备 `.github/workflows/build-ipa.yml`，支持手动运行，或推送到 `main`、`komiic-ios-build` 分支时自动运行。
+��׼�� `.github/workflows/build-ipa.yml`��֧���ֶ����У������͵� `main`��`komiic-ios-build` ��֧ʱ�Զ����С�
 
-公开仓库地址为 [hahahalucas/Komiic](https://github.com/hahahalucas/Komiic)。向 `main` 推送代码后会自动开始云编译，也可以从仓库 **Actions → Build iPhone and iPad IPA → Run workflow** 手动运行。默认选择 `unsigned`，构建成功后下载作业的 Artifact。默认不会使用签名资料或发布 Release；Artifact 保留 7 天。
+�����ֿ��ַΪ [hahahalucas/Komiic](https://github.com/hahahalucas/Komiic)���� `main` ���ʹ������Զ���ʼ�Ʊ��룬Ҳ���ԴӲֿ� **Actions �� Build iPhone and iPad IPA �� Run workflow** �ֶ����С�Ĭ��ѡ�� `unsigned`�������ɹ���������ҵ�� Artifact��Ĭ�ϲ���ʹ��ǩ�����ϻ򷢲� Release��Artifact ���� 7 �졣
 
-工作流使用 GitHub 的标准 `macos-26` runner。2026-11-19 查阅的[官方镜像清单](https://github.com/actions/runner-images/blob/main/images/macos/macos-26-Readme.md)列出 Xcode 26.6 为默认版本；[官方 runner 文档](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)列出该标签。镜像会更新，因此脚本仍会验证实际 Xcode 和 SDK 版本。公开仓库使用标准 GitHub 托管 runner 的计算分钟免费，仍受并发、单次任务时长和存储限制，详见 [GitHub Actions 用量说明](https://docs.github.com/en/actions/concepts/billing-and-usage)。私有仓库的执行使用账户的 Actions 额度，超出部分按 GitHub 的账户设置计费。
+������ʹ�� GitHub �ı�׼ `macos-26` runner��2026-11-19 ���ĵ�[�ٷ������嵥](https://github.com/actions/runner-images/blob/main/images/macos/macos-26-Readme.md)�г� Xcode 26.6 ΪĬ�ϰ汾��[�ٷ� runner �ĵ�](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)�г��ñ�ǩ���������£���˽ű��Ի���֤ʵ�� Xcode �� SDK �汾�������ֿ�ʹ�ñ�׼ GitHub �й� runner �ļ��������ѣ����ܲ�������������ʱ���ʹ洢���ƣ���� [GitHub Actions ����˵��](https://docs.github.com/en/actions/concepts/billing-and-usage)��˽�вֿ��ִ��ʹ���˻��� Actions ��ȣ��������ְ� GitHub ���˻����üƷѡ�
 
-## 可选签名构建
+## ��ѡǩ������
 
-只有已经拥有签名资料时才选择 `signed`。在仓库 Actions Secrets 配置：
+ֻ���Ѿ�ӵ��ǩ������ʱ��ѡ�� `signed`���ڲֿ� Actions Secrets ���ã�
 
-| Secret | 内容 |
+| Secret | ���� |
 | --- | --- |
-| `IOS_CERTIFICATE_P12_BASE64` | 现有 Apple 签名证书与私钥导出的 p12，进行 Base64 编码 |
-| `IOS_CERTIFICATE_PASSWORD` | 该 p12 的密码 |
-| `IOS_PROVISIONING_PROFILE_BASE64` | 对应开发、Ad Hoc 或企业描述文件的 Base64 内容 |
+| `IOS_CERTIFICATE_P12_BASE64` | ���� Apple ǩ��֤����˽Կ������ p12������ Base64 ���� |
+| `IOS_CERTIFICATE_PASSWORD` | �� p12 ������ |
+| `IOS_PROVISIONING_PROFILE_BASE64` | ��Ӧ������Ad Hoc ����ҵ�����ļ��� Base64 ���� |
 
-运行时将 `bundle_id` 填为描述文件允许的 App Bundle Identifier。脚本会核对描述文件的有效期、App 标识及直接安装方式；缺少资料或不匹配时失败，不会静默降为 unsigned。
+����ʱ�� `bundle_id` ��Ϊ�����ļ������� App Bundle Identifier���ű���˶������ļ�����Ч�ڡ�App ��ʶ��ֱ�Ӱ�װ��ʽ��ȱ�����ϻ�ƥ��ʱʧ�ܣ����ᾲĬ��Ϊ unsigned��
 
-Mac 本地也支持同名环境变量，以及 `KOMIIC_BUNDLE_ID`，然后执行 `bash scripts/build_ipa.sh --signed`。不要把这些值写入仓库文件、命令记录或公开日志。脚本使用临时钥匙串，结束时恢复原钥匙串搜索列表并清理临时证书及本次安装的描述文件，不会删除此前已存在的同一描述文件。
+Mac ����Ҳ֧��ͬ�������������Լ� `KOMIIC_BUNDLE_ID`��Ȼ��ִ�� `bash scripts/build_ipa.sh --signed`����Ҫ����Щֵд��ֿ��ļ��������¼�򹫿���־���ű�ʹ����ʱԿ�״�������ʱ�ָ�ԭԿ�״������б���������ʱ֤�鼰���ΰ�װ�������ļ�������ɾ����ǰ�Ѵ��ڵ�ͬһ�����ļ���
 
-## IPA 检查的范围
+## IPA ���ķ�Χ
 
 ```sh
 python3 scripts/verify_ipa.py path/to/Komiic-iPhone-iPad-unsigned.ipa --expected-signing unsigned
 ```
 
-检查包括：
+��������
 
-- ZIP 结构、唯一 App、Info.plist、可执行文件权限。
-- `UIDeviceFamily` 同时包含 iPhone 和 iPad，支持平台为 `iPhoneOS`。
-- 真实 64 位 arm64 Mach-O 可执行文件，平台为 iOS 设备，而非模拟器或 macOS。
-- Mach-O 和 Info.plist 的 SDK 都为 iOS 26+，包含 SwiftUI 动态链接，不启用旧设计兼容开关。
-- unsigned / signed 的签名结构与描述文件状态一致，并记录文件散列。
+- ZIP �ṹ��Ψһ App��Info.plist����ִ���ļ�Ȩ�ޡ�
+- `UIDeviceFamily` ͬʱ���� iPhone �� iPad��֧��ƽ̨Ϊ `iPhoneOS`��
+- ��ʵ 64 λ arm64 Mach-O ��ִ���ļ���ƽ̨Ϊ iOS �豸������ģ������ macOS��
+- Mach-O �� Info.plist �� SDK ��Ϊ iOS 26+������ SwiftUI ��̬���ӣ������þ���Ƽ��ݿ��ء�
+- unsigned / signed ��ǩ���ṹ�������ļ�״̬һ�£�����¼�ļ�ɢ�С�
 
-Python 检查不能证明 Apple 信任链有效，也不能证明所有界面交互正常。签名构建额外在 Mac 上执行 `codesign --verify --deep --strict`；最终是否可安装仍由设备及描述文件授权决定。Liquid Glass 视觉需结合真实 iOS 26 截图或设备运行验收。
+Python ��鲻��֤�� Apple ��������Ч��Ҳ����֤�����н��潻��������ǩ������������ Mac ��ִ�� `codesign --verify --deep --strict`�������Ƿ�ɰ�װ�����豸�������ļ���Ȩ������Liquid Glass �Ӿ�������ʵ iOS 26 ��ͼ���豸�������ա�
 
-检查器的内部回归检查可以在 Windows 执行：
+��������ڲ��ع�������� Windows ִ�У�
 
 ```sh
 python scripts/verify_ipa.py --self-test
 ```
 
-这些测试只在内存中构造结构样本并验证拒绝逻辑，不会写出或交付示例 IPA。
+��Щ����ֻ���ڴ��й���ṹ��������֤�ܾ��߼�������д���򽻸�ʾ�� IPA��

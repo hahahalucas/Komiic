@@ -17,6 +17,7 @@ struct ReaderView: View {
     @State private var scrollID: Int?
     @State private var controls = true
     @State private var retry = 0
+    @State private var readingContentMode: ComicContentMode?
     private var isOffline: Bool { downloads.isDownloaded(chapterID: chapter.id) }
     private var foreground: Color { settings.einkMode.enabled ? .black : .white }
 
@@ -25,22 +26,22 @@ struct ReaderView: View {
             ZStack {
                 (settings.einkMode.enabled ? Color.white : Color.black).ignoresSafeArea()
                 if loading {
-                    ProgressView("正在载入章节…").tint(foreground).foregroundStyle(foreground)
+                    ProgressView("���������½ڡ�").tint(foreground).foregroundStyle(foreground)
                 } else if let error {
                     VStack(spacing: 18) {
-                        EmptyState(symbol: "wifi.exclamationmark", title: "暂时无法阅读", message: error,
-                                   actionTitle: "重试", action: { retry += 1 })
-                        Button("返回") { dismiss() }
+                        EmptyState(symbol: "wifi.exclamationmark", title: "��ʱ�޷��Ķ�", message: error,
+                                   actionTitle: "����", action: { retry += 1 })
+                        Button("����") { dismiss() }
                     }.foregroundStyle(foreground)
                 } else if pages.isEmpty {
-                    EmptyState(symbol: "doc", title: "本章暂无页面", message: "可以稍后重试，或在官网查看。",
-                               actionTitle: "返回", action: { dismiss() }).foregroundStyle(foreground)
+                    EmptyState(symbol: "doc", title: "��������ҳ��", message: "�����Ժ����ԣ����ڹ����鿴��",
+                               actionTitle: "����", action: { dismiss() }).foregroundStyle(foreground)
                 } else {
                     if settings.readingMode == .scroll {
                         ScrollView {
                             LazyVStack(spacing: settings.einkMode.enabled ? 0 : 8) {
                                 ForEach(Array(pages.enumerated()), id: \.offset) { index, page in
-                                    ReaderPageImage(page: page, chapterID: chapter.id, allowNetwork: !isOffline)
+                                    ReaderPageImage(page: page, chapterID: chapter.id, baseURL: KomiicAPI(mode: readingContentMode ?? settings.contentMode).baseURL, allowNetwork: !isOffline)
                                         .frame(width: min(geometry.size.width, 1_000))
                                         .id(index)
                                 }
@@ -59,7 +60,7 @@ struct ReaderView: View {
                         TabView(selection: $currentPage) {
                             ForEach(Array(pages.enumerated()), id: \.offset) { index, page in
                                 ScrollView([.vertical, .horizontal]) {
-                                    ReaderPageImage(page: page, chapterID: chapter.id, allowNetwork: !isOffline, shouldLoad: index == currentPage)
+                                    ReaderPageImage(page: page, chapterID: chapter.id, baseURL: KomiicAPI(mode: readingContentMode ?? settings.contentMode).baseURL, allowNetwork: !isOffline, shouldLoad: index == currentPage)
                                         .frame(width: min(geometry.size.width, 1_000))
                                         .frame(minHeight: geometry.size.height)
                                         .frame(maxWidth: .infinity)
@@ -77,7 +78,10 @@ struct ReaderView: View {
             .statusBarHidden(!controls)
             .preferredColorScheme(settings.einkMode.enabled ? .light : .dark)
         }
-        .task(id: retry) { await loadPages() }
+        .task(id: retry) {
+            if readingContentMode == nil { readingContentMode = settings.contentMode }
+            await loadPages()
+        }
         .onDisappear {
             saveProgress()
             if settings.cachePolicy == .afterReading { downloads.clearCache(chapterID: chapter.id) }
@@ -95,7 +99,7 @@ struct ReaderView: View {
                         .frame(width: 44, height: 44)
                         .contentShape(Circle())
                 }
-                .accessibilityLabel("关闭阅读器")
+                .accessibilityLabel("�ر��Ķ���")
                 VStack(alignment: .leading, spacing: 3) {
                     Text(comic.title).font(.subheadline.bold()).lineLimit(1)
                     Text(chapter.displayTitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
@@ -122,22 +126,22 @@ struct ReaderView: View {
 
     private var readerMenu: some View {
         Menu {
-            Picker("阅读方式", selection: $settings.readingMode) {
+            Picker("�Ķ���ʽ", selection: $settings.readingMode) {
                 ForEach(ReadingMode.allCases) { Text($0.title).tag($0) }
             }
-            Toggle("柔和显示", isOn: $settings.dimImages)
-            Button(settings.einkMode.enabled ? "关闭墨水模式" : "开启墨水模式") {
+            Toggle("�����ʾ", isOn: $settings.dimImages)
+            Button(settings.einkMode.enabled ? "�ر�īˮģʽ" : "����īˮģʽ") {
                 settings.einkMode = settings.einkMode.enabled ? .off : .on
             }
             if !isOffline {
-                Button("下载本章", systemImage: "arrow.down.circle") { scheduleDownload() }
+                Button("���ر���", systemImage: "arrow.down.circle") { scheduleDownload() }
             }
         } label: {
             Image(systemName: "slider.horizontal.3").font(.body.weight(.semibold))
                 .frame(width: 44, height: 44)
                 .contentShape(Circle())
         }
-        .accessibilityLabel("阅读设置")
+        .accessibilityLabel("�Ķ�����")
     }
 
     private var readerTransport: some View {
@@ -148,8 +152,8 @@ struct ReaderView: View {
                        in: 0...Double(max(1, pages.count - 1)), step: 1)
                     .disabled(pages.count < 2)
                     .tint(settings.einkMode.enabled ? .black : KomiicTheme.accent)
-                    .accessibilityLabel("阅读页码")
-                    .accessibilityValue("第 \(currentPage + 1) 页，共 \(pages.count) 页")
+                    .accessibilityLabel("�Ķ�ҳ��")
+                    .accessibilityValue("�� \(currentPage + 1) ҳ���� \(pages.count) ҳ")
                 Text("\(pages.count)").monospacedDigit()
             }
             .font(.caption.weight(.medium))
@@ -160,23 +164,23 @@ struct ReaderView: View {
                         .frame(width: 48, height: 44).contentShape(Circle())
                 }
                 .disabled(currentPage == 0)
-                .accessibilityLabel("上一页")
+                .accessibilityLabel("��һҳ")
                 Spacer(minLength: 0)
-                Button { library.toggleBookmark(comic: comic, chapter: chapter, page: currentPage) } label: {
-                    Label("书签", systemImage: library.isBookmarked(chapterID: chapter.id, page: currentPage) ? "bookmark.fill" : "bookmark")
+                Button { library.toggleBookmark(comic: comic, chapter: chapter, page: currentPage, mode: readingContentMode) } label: {
+                    Label("��ǩ", systemImage: library.isBookmarked(chapterID: chapter.id, page: currentPage) ? "bookmark.fill" : "bookmark")
                         .font(.subheadline.weight(.medium)).frame(minHeight: 44)
                 }
-                .accessibilityLabel(library.isBookmarked(chapterID: chapter.id, page: currentPage) ? "移除当前页书签" : "添加当前页书签")
+                .accessibilityLabel(library.isBookmarked(chapterID: chapter.id, page: currentPage) ? "�Ƴ���ǰҳ��ǩ" : "���ӵ�ǰҳ��ǩ")
                 Spacer(minLength: 0)
                 Button { move(to: currentPage + 1) } label: {
                     Image(systemName: "chevron.right").font(.body.weight(.semibold))
                         .frame(width: 48, height: 44).contentShape(Circle())
                 }
                 .disabled(currentPage >= pages.count - 1)
-                .accessibilityLabel("下一页")
+                .accessibilityLabel("��һҳ")
             }
 
-            Label(isOffline ? "离线阅读" : "在线阅读 · 自动缓存", systemImage: isOffline ? "checkmark.circle" : "network")
+            Label(isOffline ? "�����Ķ�" : "�����Ķ� �� �Զ�����", systemImage: isOffline ? "checkmark.circle" : "network")
                 .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
         }
         .padding(.horizontal, 20)
@@ -191,7 +195,7 @@ struct ReaderView: View {
             if let offline = downloads.items.first(where: { $0.id == chapter.id }), !offline.pages.isEmpty {
                 pages = offline.pages
             } else {
-                pages = try await KomiicAPI().pages(chapterID: chapter.id)
+                pages = try await KomiicAPI(mode: readingContentMode ?? settings.contentMode).pages(chapterID: chapter.id)
             }
             try Task.checkCancellation()
             currentPage = min(max(0, initialPage), max(0, pages.count - 1))
@@ -209,14 +213,15 @@ struct ReaderView: View {
     }
     private func saveProgress() {
         guard !pages.isEmpty else { return }
-        library.recordProgress(comic: comic, chapter: chapter, page: currentPage, totalPages: pages.count)
+        library.recordProgress(comic: comic, chapter: chapter, page: currentPage, totalPages: pages.count, mode: readingContentMode)
     }
     private func toggleControls() {
         if settings.einkMode.enabled || reduceMotion { controls.toggle() }
         else { withAnimation(.easeInOut(duration: 0.18)) { controls.toggle() } }
     }
     private func scheduleDownload() {
-        Task { await downloads.download(comic: comic, chapter: chapter, pages: pages, baseURL: URL(string: "https://komiic.cc")!) }
+        let baseURL = KomiicAPI(mode: readingContentMode ?? settings.contentMode).baseURL
+        Task { await downloads.download(comic: comic, chapter: chapter, pages: pages, baseURL: baseURL) }
     }
 }
 
@@ -240,6 +245,7 @@ private struct ReaderChromeSurface: ViewModifier {
 private struct ReaderPageImage: View {
     let page: ComicPage
     let chapterID: String
+    let baseURL: URL
     let allowNetwork: Bool
     var shouldLoad = true
     @EnvironmentObject private var downloads: DownloadStore
@@ -261,7 +267,7 @@ private struct ReaderPageImage: View {
                     VStack(spacing: 14) {
                         Image(systemName: "photo.badge.exclamationmark").font(.title2)
                         Text(error).font(.caption).multilineTextAlignment(.center).frame(maxWidth: 280)
-                        Button("重新载入这一页") { retry += 1 }.buttonStyle(.bordered)
+                        Button("����������һҳ") { retry += 1 }.buttonStyle(.bordered)
                     }.foregroundStyle(settings.einkMode.enabled ? .black : .white).padding(20)
                 } else {
                     ProgressView().tint(settings.einkMode.enabled ? .black : .white)
@@ -269,12 +275,12 @@ private struct ReaderPageImage: View {
             }
         }
         .aspectRatio(ratio, contentMode: .fit)
-        .accessibilityLabel("漫画页面")
+        .accessibilityLabel("����ҳ��")
         .task(id: "\(page.id)-\(retry)-\(shouldLoad)") {
             guard shouldLoad, image == nil else { return }
             do {
                 error = nil
-                let data = try await downloads.imageData(page: page, chapterID: chapterID, baseURL: URL(string: "https://komiic.cc")!,
+                let data = try await downloads.imageData(page: page, chapterID: chapterID, baseURL: baseURL,
                                                         cachePolicy: settings.cachePolicy, allowNetwork: allowNetwork)
                 try Task.checkCancellation()
                 guard let decoded = UIImage(data: data) else { throw URLError(.cannotDecodeContentData) }

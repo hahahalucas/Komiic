@@ -26,7 +26,7 @@ final class KomiicAPITests: XCTestCase {
         let requests = LockedBox<[URLRequest]>([])
         StubURLProtocol.handler = { request in
             requests.update { $0.append(request) }
-            return (200, "application/json", Data(#"{"data":{"comics":[null,{"id":"1","title":"测试"}]}}"#.utf8))
+            return (200, "application/json", Data(#"{"data":{"comics":[null,{"id":"1","title":"����"}]}}"#.utf8))
         }
         let comics = try await api.catalog(feed: .popular, offset: 30, filter: .general)
         XCTAssertEqual(comics.map(\.id), ["1"])
@@ -41,9 +41,142 @@ final class KomiicAPITests: XCTestCase {
         XCTAssertEqual(pagination["orderBy"] as? String, "MONTH_VIEWS")
     }
 
+    func testAdultRecommendationsUseOfficialOriginAndExplicitContentType() async throws {
+        let requests = LockedBox<[URLRequest]>([])
+        StubURLProtocol.handler = { request in
+            requests.update { $0.append(request) }
+            return (200, "application/json", Data(#"{"data":{"comics":[{"id":"h1","title":"��������","contentType":"H_MANGA","warnings":["�C��"]}]}}"#.utf8))
+        }
+        let adultAPI = KomiicAPI(mode: .adult, session: session, imageSession: session)
+        let result = try await adultAPI.catalog(feed: .recommended)
+        let request = try XCTUnwrap(requests.value.first)
+        XCTAssertEqual(request.url?.host, "h.komiic.cc")
+        let payload = try XCTUnwrap(try JSONSerialization.jsonObject(with: requestBody(request)) as? [String: Any])
+        let variables = try XCTUnwrap(payload["variables"] as? [String: Any])
+        XCTAssertEqual(variables["adult"] as? Bool, true)
+        XCTAssertEqual(variables["contentType"] as? String, "H_MANGA")
+        XCTAssertEqual(result.first?.contentMode, .adult)
+        XCTAssertEqual(result.first?.warnings, ["�C��"])
+    }
+
+    func testShowWarningPreferenceSendsNullRatherThanUnsupportedEnum() async throws {
+        let requests = LockedBox<[URLRequest]>([])
+        StubURLProtocol.handler = { request in
+            requests.update { $0.append(request) }
+            return (200, "application/json", Data(#"{"data":{"setWarningPreference":{"warningPreferences":[]}}}"#.utf8))
+        }
+        let preferences = try await api.setWarningPreference(tag: "Ѫ��", action: .show)
+        XCTAssertTrue(preferences.isEmpty)
+        let payload = try XCTUnwrap(try JSONSerialization.jsonObject(with: requestBody(XCTUnwrap(requests.value.first))) as? [String: Any])
+        let variables = try XCTUnwrap(payload["variables"] as? [String: Any])
+        XCTAssertTrue(variables["action"] is NSNull)
+        XCTAssertEqual(variables["tag"] as? String, "Ѫ��")
+    }
+
+    func testOfficialFavoritesResolveMetadataAndPreserveCollectionOrder() async throws {
+        StubURLProtocol.handler = { request in
+            let payload = try XCTUnwrap(try JSONSerialization.jsonObject(with: requestBody(request)) as? [String: Any])
+            if payload["operationName"] as? String == "favoritesQuery" {
+                return (200, "application/json", Data(#"{"data":{"favoritesV2":[{"comicId":"2"},null,{"comicId":"1"}]}}"#.utf8))
+            }
+            return (200, "application/json", Data(#"{"data":{"comics":[{"id":"1","title":"һ","contentType":"REGULAR"},{"id":"2","title":"��","contentType":"REGULAR"}]}}"#.utf8))
+        }
+        let favorites = try await api.favorites()
+        XCTAssertEqual(favorites.map(\.id), ["2", "1"])
+    }
+
+    func testOfficialHistoryKeepsSavedZeroBasedChapterPage() async throws {
+        StubURLProtocol.handler = { request in
+            let payload = try XCTUnwrap(try JSONSerialization.jsonObject(with: requestBody(request)) as? [String: Any])
+            if payload["operationName"] as? String == "readComicHistory" {
+                return (200, "application/json", Data(#"{"data":{"readComicHistory":[{"comicId":"2","lastDate":"2026-11-22T10:00:00Z","chapters":[{"chapterId":"7","page":8,"updatedAt":"2026-11-22T10:00:00Z"}]}]}}"#.utf8))
+            }
+            return (200, "application/json", Data(#"{"data":{"comics":[{"id":"2","title":"��","contentType":"H_MANGA"}]}}"#.utf8))
+        }
+        let history = try await api.readingHistory()
+        XCTAssertEqual(history.first?.comic.id, "2")
+        XCTAssertEqual(history.first?.chapters.first?.chapterId, "7")
+        XCTAssertEqual(history.first?.chapters.first?.page, 8)
+        XCTAssertEqual(history.first?.comic.contentMode, .adult)
+    }
+
+    func testAccountProfileAggregatesActualOfficialStatistics() async throws {
+        StubURLProtocol.handler = { request in
+            let payload = try XCTUnwrap(try JSONSerialization.jsonObject(with: requestBody(request)) as? [String: Any])
+            if payload["operationName"] as? String == "accountQuery" {
+                return (200, "application/json", Data(#"{"data":{"account":{"id":"7","nickname":"����","email":"test@example.invalid","dateCreated":"2026-01-01","warningPreferences":[{"tag":"Ѫ��","action":"WARN"}]}}}"#.utf8))
+            }
+            return (200, "application/json", Data(#"{"data":{"readingStats":{"comicsRead":9,"chaptersRead":42,"favoriteCount":3,"bookmarkCount":2,"folderCount":1,"followingFolderCount":5,"topCategories":[{"id":"1","name":"ð��","count":7}]},"getImageLimit":{"limit":800,"usage":195,"resetInSeconds":"5700"},"messageStats":{"totalMessages":4,"totalUpvotes":18}}}"#.utf8))
+        }
+        let fetched = try await api.accountProfile()
+        let profile = try XCTUnwrap(fetched)
+        XCTAssertEqual(profile.username, "����")
+        XCTAssertEqual(profile.readComicCount, 9)
+        XCTAssertEqual(profile.imageReadCount, 195)
+        XCTAssertEqual(profile.imageReadLimit, 800)
+        XCTAssertEqual(profile.commentLikes, 18)
+        XCTAssertEqual(profile.topCategories.first?.name, "ð��")
+        XCTAssertEqual(profile.warningPreferences.first?.action, .warn)
+        XCTAssertEqual(profile.resetAt.timeIntervalSinceNow, 5700, accuracy: 5)
+    }
+
+    func testAdultProfileKeepsInstanceOriginAndUnauthenticatedStateIsNil() async throws {
+        let requests = LockedBox<[URLRequest]>([])
+        StubURLProtocol.handler = { request in
+            requests.update { $0.append(request) }
+            return (200, "application/json", Data(#"{"data":null,"errors":[{"message":"no token","path":["account"]}]}"#.utf8))
+        }
+        let adultAPI = KomiicAPI(mode: .adult, session: session, imageSession: session)
+        let profile = try await adultAPI.accountProfile()
+        let identity = try await adultAPI.accountID()
+        XCTAssertNil(profile)
+        XCTAssertNil(identity)
+        XCTAssertEqual(requests.value.count, 2)
+        XCTAssertTrue(requests.value.allSatisfy { $0.url?.host == "h.komiic.cc" })
+    }
+
+    func testAdultImageTicketKeepsHOriginButUsesRegionalImageCDN() async throws {
+        let requests = LockedBox<[URLRequest]>([])
+        StubURLProtocol.handler = { request in
+            requests.update { $0.append(request) }
+            return (200, "application/json", Data(#"{"data":{"ticket":{"url":"https://img.komiic.com/page.webp","ticket":"test-ticket","kid":"key"}}}"#.utf8))
+        }
+        let adultAPI = KomiicAPI(mode: .adult, session: session, imageSession: session)
+        let imageRequest = try await adultAPI.imageRequest(for: ComicPage(id: "1", kid: "key"))
+        XCTAssertEqual(requests.value.first?.url?.host, "h.komiic.cc")
+        XCTAssertEqual(imageRequest.url?.host, "img.komiic.cc")
+        XCTAssertEqual(imageRequest.value(forHTTPHeaderField: "Referer"), "https://h.komiic.cc/")
+        XCTAssertEqual(imageRequest.value(forHTTPHeaderField: "X-Image-Ticket"), "test-ticket")
+        XCTAssertFalse(imageRequest.httpShouldHandleCookies)
+    }
+
+    func testOfficialCollectionWritesUseSelectedOriginAndZeroBasedProgress() async throws {
+        let requests = LockedBox<[URLRequest]>([])
+        StubURLProtocol.handler = { request in
+            requests.update { $0.append(request) }
+            let payload = try XCTUnwrap(try JSONSerialization.jsonObject(with: requestBody(request)) as? [String: Any])
+            if payload["operationName"] as? String == "addFavorite" {
+                return (200, "application/json", Data(#"{"data":{"addFavorite":{"comicId":"h1"}}}"#.utf8))
+            }
+            return (200, "application/json", Data(#"{"data":{"result":true}}"#.utf8))
+        }
+        let adultAPI = KomiicAPI(mode: .adult, session: session, imageSession: session)
+        try await adultAPI.setFavorite(comicID: "h1", isFavorite: true)
+        try await adultAPI.setFavorite(comicID: "h1", isFavorite: false)
+        try await adultAPI.recordProgress(comicID: "h1", chapterID: "h2", page: 8)
+        XCTAssertEqual(requests.value.count, 3)
+        XCTAssertTrue(requests.value.allSatisfy { $0.url?.host == "h.komiic.cc" })
+        let payloads = try requests.value.map { try XCTUnwrap(try JSONSerialization.jsonObject(with: requestBody($0)) as? [String: Any]) }
+        XCTAssertEqual(payloads.compactMap { $0["operationName"] as? String }, ["addFavorite", "removeFavorite", "addReadComicHistoryV2"])
+        let progress = try XCTUnwrap(payloads.last?["variables"] as? [String: Any])
+        XCTAssertEqual(progress["comicId"] as? String, "h1")
+        XCTAssertEqual(progress["chapterId"] as? String, "h2")
+        XCTAssertEqual(progress["page"] as? Int, 8)
+    }
+
     func testGraphQLErrorTakesPrecedenceOverPartialData() async {
         StubURLProtocol.handler = { _ in
-            (200, "application/json", Data(#"{"data":{"comics":null},"errors":[{"message":"额度已用完","extensions":{"code":"QUOTA_EXCEEDED"}}]}"#.utf8))
+            (200, "application/json", Data(#"{"data":{"comics":null},"errors":[{"message":"���������","extensions":{"code":"QUOTA_EXCEEDED"}}]}"#.utf8))
         }
         do {
             _ = try await api.catalog(feed: .updated)
@@ -54,14 +187,14 @@ final class KomiicAPITests: XCTestCase {
     }
 
     func testSearchReturnsAllResultsBeyondThirtyAndSupportsOffset() async throws {
-        let comics = (0..<47).map { ["id": String($0), "title": "结果 \($0)"] }
+        let comics = (0..<47).map { ["id": String($0), "title": "��� \($0)"] }
         let response: [String: Any] = ["data": ["searchComicsAndAuthors": ["comics": comics]]]
         let data = try JSONSerialization.data(withJSONObject: response)
         StubURLProtocol.handler = { _ in (200, "application/json", data) }
-        let all = try await api.search(keyword: "测试")
+        let all = try await api.search(keyword: "����")
         XCTAssertEqual(all.count, 47)
         XCTAssertEqual(all.last?.id, "46")
-        let suffix = try await api.search(keyword: "测试", offset: 31)
+        let suffix = try await api.search(keyword: "����", offset: 31)
         XCTAssertEqual(suffix.count, 16)
         XCTAssertEqual(suffix.first?.id, "31")
     }
@@ -79,7 +212,7 @@ final class KomiicAPITests: XCTestCase {
         let requests = LockedBox<[URLRequest]>([])
         var comics: [Any] = [NSNull()]
         comics.append(contentsOf: (0..<47).map { index -> [String: Any] in
-            ["id": String(index), "title": "作品 \(index)", "authors": [["id": "7", "name": "作者"]]]
+            ["id": String(index), "title": "��Ʒ \(index)", "authors": [["id": "7", "name": "����"]]]
         })
         let data = try JSONSerialization.data(withJSONObject: ["data": ["comics": comics]])
         StubURLProtocol.handler = { request in
@@ -89,7 +222,7 @@ final class KomiicAPITests: XCTestCase {
         let works = try await api.comics(authorID: "7")
         XCTAssertEqual(works.count, 47)
         XCTAssertEqual(works.last?.id, "46")
-        XCTAssertEqual(works.first?.authorDetails, [ComicAuthor(id: "7", name: "作者")])
+        XCTAssertEqual(works.first?.authorDetails, [ComicAuthor(id: "7", name: "����")])
         let request = try XCTUnwrap(requests.value.first)
         let payload = try XCTUnwrap(try JSONSerialization.jsonObject(with: requestBody(request)) as? [String: Any])
         XCTAssertEqual(payload["operationName"] as? String, "comicsByAuthor")
@@ -102,12 +235,12 @@ final class KomiicAPITests: XCTestCase {
         let requests = LockedBox<[URLRequest]>([])
         StubURLProtocol.handler = { request in
             requests.update { $0.append(request) }
-            return (200, "application/json", Data(#"{"data":{"comicById":{"id":"1","title":"漫画","authors":[{"id":"7","name":"作者"}],"sexyLevel":3,"sexyLevelReason":"分级说明"}}}"#.utf8))
+            return (200, "application/json", Data(#"{"data":{"comicById":{"id":"1","title":"����","authors":[{"id":"7","name":"����"}],"sexyLevel":3,"sexyLevelReason":"�ּ�˵��"}}}"#.utf8))
         }
         let comic = try await api.comic(id: "1")
         XCTAssertEqual(comic.sexyLevel, 3)
-        XCTAssertEqual(comic.sexyLevelReason, "分级说明")
-        XCTAssertEqual(comic.authorDetails, [ComicAuthor(id: "7", name: "作者")])
+        XCTAssertEqual(comic.sexyLevelReason, "�ּ�˵��")
+        XCTAssertEqual(comic.authorDetails, [ComicAuthor(id: "7", name: "����")])
         let request = try XCTUnwrap(requests.value.first)
         let payload = try XCTUnwrap(try JSONSerialization.jsonObject(with: requestBody(request)) as? [String: Any])
         let query = try XCTUnwrap(payload["query"] as? String)
@@ -118,14 +251,14 @@ final class KomiicAPITests: XCTestCase {
         let requests = LockedBox<[URLRequest]>([])
         StubURLProtocol.handler = { request in
             requests.update { $0.append(request) }
-            return (200, "application/json", Data(#"{"data":{"searchComicsAndAuthors":{"authors":[null,{"id":"7","name":"作者"}]}}}"#.utf8))
+            return (200, "application/json", Data(#"{"data":{"searchComicsAndAuthors":{"authors":[null,{"id":"7","name":"����"}]}}}"#.utf8))
         }
-        let authors = try await api.searchAuthors(keyword: "  作者  ")
-        XCTAssertEqual(authors, [ComicAuthor(id: "7", name: "作者")])
+        let authors = try await api.searchAuthors(keyword: "  ����  ")
+        XCTAssertEqual(authors, [ComicAuthor(id: "7", name: "����")])
         let request = try XCTUnwrap(requests.value.first)
         let payload = try XCTUnwrap(try JSONSerialization.jsonObject(with: requestBody(request)) as? [String: Any])
         let variables = try XCTUnwrap(payload["variables"] as? [String: Any])
-        XCTAssertEqual(variables["keyword"] as? String, "作者")
+        XCTAssertEqual(variables["keyword"] as? String, "����")
         let empty = try await api.searchAuthors(keyword: " \n ")
         XCTAssertTrue(empty.isEmpty)
         XCTAssertEqual(requests.value.count, 1)
@@ -204,7 +337,7 @@ final class KomiicAPITests: XCTestCase {
                 HTTPCookieStorage.shared.setCookie(fresh)
                 return (200, "application/json", Data("{}".utf8))
             }
-            return (200, "application/json", Data(#"{"data":{"comics":[{"id":"1","title":"测试"}]}}"#.utf8))
+            return (200, "application/json", Data(#"{"data":{"comics":[{"id":"1","title":"����"}]}}"#.utf8))
         }
         let refreshingAPI = KomiicAPI(baseURL: source, session: session, imageSession: session)
         let resultCount = try await withThrowingTaskGroup(of: Int.self) { group in
@@ -214,6 +347,45 @@ final class KomiicAPITests: XCTestCase {
             return total
         }
         XCTAssertEqual(resultCount, 6)
+        XCTAssertEqual(refreshes.value, 1)
+    }
+
+    func testClearingSessionDrainsRefreshAndKeepsGateUntilAllClearersFinish() async throws {
+        let domain = "logout-test-\(UUID().uuidString.lowercased()).invalid"
+        let source = URL(string: "https://\(domain)")!
+        let payload = try JSONSerialization.data(withJSONObject: ["exp": Date().timeIntervalSince1970 - 60])
+            .base64EncodedString().replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
+        let cookie = try XCTUnwrap(HTTPCookie(properties: [.domain: domain, .path: "/", .name: "komiic-access-token",
+            .value: "e30.\(payload).signature", .secure: "TRUE", .expires: Date().addingTimeInterval(3600)]))
+        HTTPCookieStorage.shared.setCookie(cookie)
+        defer { HTTPCookieStorage.shared.deleteCookie(cookie) }
+        let refreshes = LockedBox(0)
+        StubURLProtocol.handler = { request in
+            if request.url?.path == "/auth/refresh" {
+                refreshes.update { $0 += 1 }
+                Thread.sleep(forTimeInterval: 0.1)
+                return (200, "application/json", Data("{}".utf8))
+            }
+            return (200, "application/json", Data(#"{"data":{"comics":[{"id":"1","title":"����"}]}}"#.utf8))
+        }
+        let testAPI = KomiicAPI(baseURL: source, session: session, imageSession: session)
+        let pending = Task { try await testAPI.catalog(feed: .updated) }
+        for _ in 0..<100 where refreshes.value == 0 { try await Task.sleep(for: .milliseconds(1)) }
+        XCTAssertEqual(refreshes.value, 1)
+        await KomiicAPI.beginClearingSession()
+        await KomiicAPI.beginClearingSession()
+        await KomiicAPI.endClearingSession()
+        do {
+            _ = try await testAPI.catalog(feed: .updated)
+            XCTFail("A second clearer must keep the refresh gate closed")
+        } catch KomiicError.authenticationRequired {
+        } catch { XCTFail("Unexpected clearing error: \(error)") }
+        await KomiicAPI.endClearingSession()
+        _ = await pending.result
+        HTTPCookieStorage.shared.deleteCookie(cookie)
+        let comics = try await testAPI.catalog(feed: .updated)
+        XCTAssertEqual(comics.map(\.id), ["1"])
         XCTAssertEqual(refreshes.value, 1)
     }
 }

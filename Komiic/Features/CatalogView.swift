@@ -85,6 +85,7 @@ private enum CatalogPage: String, CaseIterable, Identifiable {
 
 struct CatalogView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @EnvironmentObject private var settings: ReaderSettings
     @State private var page: CatalogPage = .updated
     @State private var filter: ContentFilter = .all
     @State private var showFilter = false
@@ -96,10 +97,10 @@ struct CatalogView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 6) {
-                PillButton(title: "最近更新", selected: page.isUpdates) { select(.updated) }
-                PillButton(title: "当月最热", selected: page == .popular) { select(.popular) }
-                PillButton(title: "推荐漫画", selected: page == .recommended) { select(.recommended) }
-                PillButton(title: "最近阅读", selected: page == .history) { select(.history) }
+                PillButton(title: "�������", selected: page.isUpdates) { select(.updated) }
+                PillButton(title: "��������", selected: page == .popular) { select(.popular) }
+                PillButton(title: "�Ƽ�����", selected: page == .recommended) { select(.recommended) }
+                PillButton(title: "����Ķ�", selected: page == .history) { select(.history) }
             }
             .komiicGlassGroup(spacing: 6)
             .padding(.horizontal, 12).padding(.vertical, 8)
@@ -112,7 +113,7 @@ struct CatalogView: View {
                 ForEach(CatalogPage.allCases) { item in
                     Group {
                         if let feed = item.feed {
-                            CatalogFeedPage(feed: feed, filter: filter, active: page == item)
+                            CatalogFeedPage(feed: feed, filter: filter, active: page == item, mode: settings.contentMode)
                         } else {
                             HistoryView()
                         }
@@ -132,14 +133,14 @@ struct CatalogView: View {
     private var pageControls: some View {
         HStack(spacing: 12) {
             if page.isUpdates {
-                Picker("更新方式", selection: pageSelection) {
-                    Text("最近更新").tag(CatalogPage.updated)
-                    Text("最近上架").tag(CatalogPage.newest)
+                Picker("���·�ʽ", selection: pageSelection) {
+                    Text("�������").tag(CatalogPage.updated)
+                    Text("����ϼ�").tag(CatalogPage.newest)
                 }
                 .pickerStyle(.segmented).frame(maxWidth: 230)
             } else {
-                Text(page == .popular ? "这个月，大家都在看" :
-                     page == .recommended ? "发现下一部好漫画" : "从上次读到的地方继续")
+                Text(page == .popular ? "����£���Ҷ��ڿ�" :
+                     page == .recommended ? "������һ��������" : "���ϴζ����ĵط�����")
                     .font(.subheadline).foregroundStyle(.secondary)
                     .lineLimit(1).minimumScaleFactor(0.8)
             }
@@ -150,7 +151,7 @@ struct CatalogView: View {
                         .font(.system(size: 19)).padding(9)
                 }
                 .komiicActionStyle()
-                .accessibilityLabel("筛选选项")
+                .accessibilityLabel("ɸѡѡ��")
             }
         }
         .frame(minHeight: 44)
@@ -169,10 +170,18 @@ private struct CatalogFeedPage: View {
     let filter: ContentFilter
     let active: Bool
     @EnvironmentObject private var library: LibraryStore
-    @StateObject private var model = CatalogModel()
+    @EnvironmentObject private var settings: ReaderSettings
+    @StateObject private var model: CatalogModel
+
+    init(feed: CatalogFeed, filter: ContentFilter, active: Bool, mode: ComicContentMode) {
+        self.feed = feed; self.filter = filter; self.active = active
+        _model = StateObject(wrappedValue: CatalogModel { feed, offset, filter in
+            try await KomiicAPI(mode: mode).catalog(feed: feed, offset: offset, filter: filter)
+        })
+    }
 
     private var visibleComics: [Comic] {
-        model.comics.filter { !library.blockedComicIDs.contains($0.id) }
+        model.comics.filter { !library.isBlocked($0) && !settings.shouldHide($0) }
     }
 
     var body: some View {
@@ -180,14 +189,15 @@ private struct CatalogFeedPage: View {
             VStack(spacing: 18) {
                 ComicGrid(comics: visibleComics)
                 if let error = model.error {
-                    EmptyState(symbol: "wifi.exclamationmark", title: "连接暂时不可用", message: error,
-                               actionTitle: "重新连接", action: { Task { await reload() } })
+                    EmptyState(symbol: "wifi.exclamationmark", title: "������ʱ������", message: error,
+                               actionTitle: "��������", action: { Task { await reload() } })
                 } else if model.loading || model.loadedFilter == nil {
-                    ProgressView("正在载入漫画…").font(.caption).padding(35)
+                    ProgressView("��������������").font(.caption).padding(35)
                 } else if visibleComics.isEmpty {
-                    EmptyState(symbol: "books.vertical", title: "暂无漫画", message: "尝试调整筛选，或稍后刷新。")
-                } else if model.hasMore {
-                    Button("载入更多") { Task { await model.load(feed: feed, filter: filter, reset: false) } }
+                    EmptyState(symbol: "books.vertical", title: "��������", message: "���Ե���ɸѡ�����Ժ�ˢ�¡�")
+                }
+                if model.hasMore, !model.loading, model.loadedFilter != nil, model.error == nil {
+                    Button("�������") { Task { await model.load(feed: feed, filter: filter, reset: false) } }
                         .buttonStyle(.bordered).padding(.bottom, 14)
                 }
             }
@@ -215,18 +225,18 @@ private struct FilterSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("内容分级") {
-                    Picker("色气程度", selection: $draft) {
+                Section("���ݷּ�") {
+                    Picker("ɫ���̶�", selection: $draft) {
                         ForEach(ContentFilter.allCases) { filter in
                             Text(filter.title).tag(filter)
                         }
                     }.pickerStyle(.menu)
                 }
             }
-            .navigationTitle("筛选选项").navigationBarTitleDisplayMode(.inline)
+            .navigationTitle("ɸѡѡ��").navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) { Button("重置") { draft = .all } }
-                ToolbarItem(placement: .topBarTrailing) { Button("确定") { selection = draft; dismiss() }.bold() }
+                ToolbarItem(placement: .topBarLeading) { Button("����") { draft = .all } }
+                ToolbarItem(placement: .topBarTrailing) { Button("ȷ��") { selection = draft; dismiss() }.bold() }
             }
         }
         .onAppear { draft = selection }
@@ -241,23 +251,30 @@ struct SearchView: View {
     @State private var loading = false
     @State private var error: String?
     @EnvironmentObject private var library: LibraryStore
+    @EnvironmentObject private var settings: ReaderSettings
+    private var visibleComics: [Comic] { comics.filter { !library.isBlocked($0) && !settings.shouldHide($0) } }
+
+    init(initialKeyword: String = "", onSelect: @escaping (Comic) -> Void) {
+        self.onSelect = onSelect
+        _keyword = State(initialValue: initialKeyword)
+    }
     var body: some View {
         ScrollView {
             if loading { ProgressView().padding(50) }
             if let error {
-                EmptyState(symbol: "wifi.exclamationmark", title: "搜索失败", message: error)
+                EmptyState(symbol: "wifi.exclamationmark", title: "����ʧ��", message: error)
             } else if keyword.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                EmptyState(symbol: "magnifyingglass", title: "找一本想看的漫画", message: "输入漫画名、作者或关键词。")
-            } else if comics.isEmpty && !loading {
-                EmptyState(symbol: "text.magnifyingglass", title: "没有找到相关漫画", message: "换一个名称或更短的关键词试试。")
+                EmptyState(symbol: "magnifyingglass", title: "��һ���뿴������", message: "���������������߻�ؼ��ʡ�")
+            } else if visibleComics.isEmpty && !loading {
+                EmptyState(symbol: "text.magnifyingglass", title: "û���ҵ��������", message: "��һ�����ƻ���̵Ĺؼ������ԡ�")
             } else {
-                ComicGrid(comics: comics.filter { !library.blockedComicIDs.contains($0.id) }, onSelect: onSelect).padding(14)
+                ComicGrid(comics: visibleComics, onSelect: onSelect).padding(14)
             }
         }
         .background(KomiicTheme.canvas)
-        .navigationTitle("搜索")
+        .navigationTitle("����")
         .searchable(text: $keyword, isPresented: $searchPresented,
-                    placement: .navigationBarDrawer(displayMode: .always), prompt: "漫画名 / 作者")
+                    placement: .navigationBarDrawer(displayMode: .always), prompt: "������ / ����")
         .onAppear { searchPresented = true }
         .task(id: keyword) {
             comics = []; error = nil
@@ -266,7 +283,7 @@ struct SearchView: View {
             loading = true
             do {
                 try await Task.sleep(for: .milliseconds(350))
-                let result = try await KomiicAPI().search(keyword: query)
+                let result = try await KomiicAPI(mode: settings.contentMode).search(keyword: query)
                 try Task.checkCancellation()
                 comics = result
             } catch is CancellationError { return

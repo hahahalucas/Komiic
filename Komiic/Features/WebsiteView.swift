@@ -3,7 +3,7 @@ import WebKit
 
 struct WebsiteView: View {
     let url: URL
-    var title = "Komiic 官网"
+    var title = "Komiic ����"
     var onClose: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var loading = true
@@ -20,18 +20,18 @@ struct WebsiteView: View {
                 }
                 if loading { ProgressView().padding(10).background(.regularMaterial, in: Capsule()) }
                 if let errorMessage {
-                    EmptyState(symbol: "wifi.exclamationmark", title: "网页未能载入", message: errorMessage,
-                               actionTitle: "重试", action: { self.errorMessage = nil; reloadID = UUID() })
+                    EmptyState(symbol: "wifi.exclamationmark", title: "��ҳδ������", message: errorMessage,
+                               actionTitle: "����", action: { self.errorMessage = nil; reloadID = UUID() })
                     .background(KomiicTheme.canvas)
                 }
             }
             .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Link(destination: url) { Image(systemName: "safari") }.accessibilityLabel("在浏览器中打开")
+                    Link(destination: url) { Image(systemName: "safari") }.accessibilityLabel("��������д�")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("完成") {
+                    Button("���") {
                         Task {
                             await WebCookieBridge.synchronize(preferWeb: true)
                             onClose?()
@@ -51,22 +51,39 @@ struct WebsiteView: View {
     }
 }
 
+@MainActor
 enum WebCookieBridge {
+    private static var clearingSessions = 0
+    private static var synchronizationGeneration = UUID()
+
     @MainActor static func synchronize(preferWeb: Bool = false) async {
+        guard clearingSessions == 0 else { return }
+        let generation = synchronizationGeneration
         let webStore = WKWebsiteDataStore.default().httpCookieStore
         let webCookies = await webStore.allCookies().filter(isOfficial)
+        guard clearingSessions == 0, synchronizationGeneration == generation else { return }
         let nativeCookies = (HTTPCookieStorage.shared.cookies ?? []).filter(isOfficial)
-        let webToken = webCookies.first { $0.name == "komiic-access-token" }
-        let nativeToken = nativeCookies.first { $0.name == "komiic-access-token" }
-        // Refresh rotates the whole cookie session. Keep the access/refresh pair together.
-        if !preferWeb, let nativeToken,
-           webToken == nil || tokenExpiry(nativeToken) > tokenExpiry(webToken!) {
-            for cookie in nativeCookies { await webStore.setCookie(cookie) }
-        } else {
-            if preferWeb {
-                for cookie in nativeCookies { HTTPCookieStorage.shared.deleteCookie(cookie) }
+        // Compare sessions by cookie scope: the general and H sites may have
+        // different host-only tokens. Refresh must keep each access/refresh pair together.
+        let scopes = Set((webCookies + nativeCookies).map { "\($0.domain)|\($0.path)" })
+        for scope in scopes {
+            guard clearingSessions == 0, synchronizationGeneration == generation else { return }
+            let web = webCookies.filter { "\($0.domain)|\($0.path)" == scope }
+            let native = nativeCookies.filter { "\($0.domain)|\($0.path)" == scope }
+            let webToken = web.first { $0.name == "komiic-access-token" }
+            let nativeToken = native.first { $0.name == "komiic-access-token" }
+            if !preferWeb, let nativeToken,
+               webToken == nil || tokenExpiry(nativeToken) > tokenExpiry(webToken!) {
+                for cookie in native {
+                    guard clearingSessions == 0, synchronizationGeneration == generation else { return }
+                    await webStore.setCookie(cookie)
+                }
+            } else {
+                if preferWeb {
+                    for cookie in native { HTTPCookieStorage.shared.deleteCookie(cookie) }
+                }
+                for cookie in web { HTTPCookieStorage.shared.setCookie(cookie) }
             }
-            for cookie in webCookies { HTTPCookieStorage.shared.setCookie(cookie) }
         }
     }
 
@@ -87,6 +104,10 @@ enum WebCookieBridge {
     }
 
     @MainActor static func clear() async {
+        clearingSessions += 1
+        synchronizationGeneration = UUID()
+        defer { clearingSessions -= 1 }
+        await KomiicAPI.beginClearingSession()
         let cookieStore = WKWebsiteDataStore.default().httpCookieStore
         for cookie in await cookieStore.allCookies()
             where cookie.domain == "komiic.cc" || cookie.domain.hasSuffix(".komiic.cc") {
@@ -96,6 +117,7 @@ enum WebCookieBridge {
             where cookie.domain == "komiic.cc" || cookie.domain.hasSuffix(".komiic.cc") {
             HTTPCookieStorage.shared.deleteCookie(cookie)
         }
+        await KomiicAPI.endClearingSession()
     }
 }
 

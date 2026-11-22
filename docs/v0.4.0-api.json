@@ -1,0 +1,156 @@
+{
+  "checkedDate": "2026-11-22",
+  "source": "https://komiic.cc/assets/index-Qe6s1nt9.js",
+  "modeSelection": "Official h. origin plus explicit adult/contentType for recommendations",
+  "checks": [
+    {
+      "mode": "REGULAR",
+      "origin": "https://komiic.cc",
+      "operation": "recentUpdate",
+      "status": 200,
+      "count": 2,
+      "contentTypes": [
+        "REGULAR"
+      ],
+      "errors": null,
+      "account": null
+    },
+    {
+      "mode": "REGULAR",
+      "origin": "https://komiic.cc",
+      "operation": "newComics",
+      "status": 200,
+      "count": 2,
+      "contentTypes": [
+        "REGULAR"
+      ],
+      "errors": null,
+      "account": null
+    },
+    {
+      "mode": "REGULAR",
+      "origin": "https://komiic.cc",
+      "operation": "hotComics",
+      "status": 200,
+      "count": 2,
+      "contentTypes": [
+        "REGULAR"
+      ],
+      "errors": null,
+      "account": null
+    },
+    {
+      "mode": "REGULAR",
+      "origin": "https://komiic.cc",
+      "operation": "topRecommendedComics",
+      "status": 200,
+      "count": 2,
+      "contentTypes": [
+        "REGULAR"
+      ],
+      "errors": null,
+      "account": null
+    },
+    {
+      "mode": "REGULAR",
+      "origin": "https://komiic.cc",
+      "operation": "accountIdentity",
+      "status": 200,
+      "count": 0,
+      "contentTypes": [],
+      "errors": [
+        {
+          "message": "no token",
+          "path": [
+            "account"
+          ]
+        }
+      ],
+      "account": null
+    },
+    {
+      "mode": "H_MANGA",
+      "origin": "https://h.komiic.cc",
+      "operation": "recentUpdate",
+      "status": 200,
+      "count": 2,
+      "contentTypes": [
+        "H_MANGA"
+      ],
+      "errors": null,
+      "account": null
+    },
+    {
+      "mode": "H_MANGA",
+      "origin": "https://h.komiic.cc",
+      "operation": "newComics",
+      "status": 200,
+      "count": 2,
+      "contentTypes": [
+        "H_MANGA"
+      ],
+      "errors": null,
+      "account": null
+    },
+    {
+      "mode": "H_MANGA",
+      "origin": "https://h.komiic.cc",
+      "operation": "hotComics",
+      "status": 200,
+      "count": 2,
+      "contentTypes": [
+        "H_MANGA"
+      ],
+      "errors": null,
+      "account": null
+    },
+    {
+      "mode": "H_MANGA",
+      "origin": "https://h.komiic.cc",
+      "operation": "topRecommendedComics",
+      "status": 200,
+      "count": 2,
+      "contentTypes": [
+        "H_MANGA"
+      ],
+      "errors": null,
+      "account": null
+    },
+    {
+      "mode": "H_MANGA",
+      "origin": "https://h.komiic.cc",
+      "operation": "accountIdentity",
+      "status": 200,
+      "count": 0,
+      "contentTypes": [],
+      "errors": [
+        {
+          "message": "no token",
+          "path": [
+            "account"
+          ]
+        }
+      ],
+      "account": null
+    }
+  ],
+  "officialWarningTags": [
+    "Ѫ��",
+    "�C��",
+    "����",
+    "�Ա���",
+    "���茑",
+    "�Ԛ�",
+    "�ֲ�",
+    "���H",
+    "NTR",
+    "BL",
+    "�ٺ�"
+  ],
+  "warningActions": {
+    "show": null,
+    "blur": "WARN",
+    "hide": "HIDE"
+  },
+  "authenticationLimit": "Authenticated mutations/profile collections inferred from first-party script; no user credentials were supplied. No quota bypass or simulated profile data."
+}
