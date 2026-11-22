@@ -1,4 +1,4 @@
-name: Build iPhone and iPad IPA
+name: Build device IPA without simulator tests
 
 on:
   workflow_dispatch:
@@ -16,17 +16,14 @@ on:
         default: com.example.Komiic
   push:
     branches:
-      - main
-      - komiic-ios-build
-      - codex/komiic-3.0
-      - codex/komiic-0.4.0
+      - codex/komiic-0.4.0-device
 
 permissions:
   contents: read
 
 concurrency:
   group: komiic-ipa-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -45,7 +42,7 @@ jobs:
           xcodebuild -version
           xcrun --sdk iphoneos --show-sdk-version
 
-      - name: Test on iPhone and iPad, build and verify real device IPA
+      - name: Build and verify real device IPA without simulator tests
         id: package
         env:
           SIGNING_MODE: ${{ inputs.signing || 'unsigned' }}
@@ -54,9 +51,9 @@ jobs:
           IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
         run: |
           if [[ "$SIGNING_MODE" == "signed" ]]; then
-            bash scripts/build_ipa.sh --signed
+            bash scripts/build_ipa.sh --signed --skip-tests
           else
-            bash scripts/build_ipa.sh --unsigned
+            bash scripts/build_ipa.sh --unsigned --skip-tests
           fi
 
       - name: Upload IPA, verification, screenshots and build logs
@@ -75,4 +72,4 @@ jobs:
           ARTIFACT_DIRECTORY: ${{ steps.package.outputs.artifact_dir }}
         run: |
           cat "$ARTIFACT_DIRECTORY/INSTALLATION.txt" >> "$GITHUB_STEP_SUMMARY"
-          printf '\nIncludes iPhone and iPad simulator screenshots, XCTest results, a device-code verification report, and SHA-256.\n' >> "$GITHUB_STEP_SUMMARY"
+          printf '\nDevice build only; simulator tests run separately on codex/komiic-0.4.0. Includes a device-code verification report and SHA-256.\n' >> "$GITHUB_STEP_SUMMARY"
