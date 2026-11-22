@@ -41,6 +41,8 @@
 
 ## 验证与构建
 
+[下载 0.5.0 IPA 产物](https://github.com/hahahalucas/Komiic/actions/runs/45043225501/artifacts/14761494948)：ZIP 内的 `Komiic-iPhone-iPad-unsigned.ipa` 是本版本未签名安装包，支持 iPhone / iPad，安装前需自签。设备 Release 编译与包结构校验已通过。
+
 本地环境为 Windows，可执行工程结构和 Swift 语法检查：
 
 ```sh

@@ -1,6 +1,10 @@
 # 0.5.0 验证记录
 
-源码版本 **0.5.0（build 5）**。本地 Windows 工程结构及 Swift 语法检查通过；Xcode 编译、XCTest 和 IPA 以本次云端任务结果为准。
+源码版本 **0.5.0（build 5）**。本地 Windows 工程结构及 Swift 语法检查通过；Xcode 26.6 / iOS SDK 26.5 的设备 Release 编译及 IPA 校验通过。iPhone / iPad 完整回归结果以本次模拟器任务为准。
+
+[下载 0.5.0 IPA 产物](https://github.com/hahahalucas/Komiic/actions/runs/45043225501/artifacts/14761494948)，ZIP 内为 `Komiic-iPhone-iPad-unsigned.ipa`。包内版本 0.5.0，App 工程 build 5，arm64 iOS 设备代码、iPhone/iPad 支持、最低 iOS 17 与未签名结构校验通过。IPA SHA-256：`ec5383b66af30fb4e0975634426792f38c66a91cdbbfcf07a61fe3338fe79933`。
+
+设备包提交 `442501291a0f37d8054a20a259289891ea813180` 和模拟器提交 `92a4226de3e6e7cc8fc090166ac393869c184df2` 仅工作流不同，App 源码完全一致。完整构建信息见 [0.5.0 构建记录](v0.5.0-build.json)。
 
 新增回归覆盖：官网书柜/屏蔽的读写、删除与退出恢复、本机待重试操作的账号隔离；首页/账号首次加载与主动刷新；双页顺序、奇数尾页、步长；附近五话边界及按话数切换；警告封面显示状态与完全隐藏优先级。
 

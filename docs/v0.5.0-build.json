@@ -1,0 +1,56 @@
+{
+  "version": "0.5.0",
+  "build": 5,
+  "appSourceCommit": "92a4226de3e6e7cc8fc090166ac393869c184df2",
+  "deviceCommit": "442501291a0f37d8054a20a259289891ea813180",
+  "appSourcesIdentical": true,
+  "deviceRun": "https://github.com/hahahalucas/Komiic/actions/runs/45043225501",
+  "simulatorRun": "https://github.com/hahahalucas/Komiic/actions/runs/45042874177",
+  "artifactURL": "https://github.com/hahahalucas/Komiic/actions/runs/45043225501/artifacts/14761494948",
+  "artifactID": 14761494948,
+  "artifactZIPBytes": 1355979,
+  "artifactZIPSHA256": "fdad6444bab0124678153daf92ade6640d3f08e1b5c23c3b7da381571869656d",
+  "ipa": {
+    "bundleIdentifier": "com.example.Komiic",
+    "version": "0.5.0",
+    "deviceFamilies": [
+      "iPhone",
+      "iPad"
+    ],
+    "minimumOS": "17.0",
+    "sdk": "iphoneos26.5",
+    "executableBytes": 5668856,
+    "executableSHA256": "1c5e0dcfe8f189b78c615aab31dbf51aa3004d78ac9dbc07e1495df4c8ea851c",
+    "macho": [
+      {
+        "architecture": "arm64",
+        "platform": 2,
+        "minimumOS": "17.0.0",
+        "sdk": "26.5.0",
+        "swiftUILinked": true,
+        "codeSignatureCommand": false
+      }
+    ],
+    "signing": "unsigned",
+    "signatureStructurePresent": false,
+    "appleSignatureTrustCheckedByThisScript": false,
+    "installation": "Requires your own authorized signing before installation.",
+    "checks": [
+      "IPA layout",
+      "bundle plist",
+      "iPhone+iPad families",
+      "arm64 executable",
+      "iOS device platform",
+      "iOS SDK 26+",
+      "SwiftUI linkage",
+      "executable permission",
+      "signing structure"
+    ],
+    "ipaSHA256": "ec5383b66af30fb4e0975634426792f38c66a91cdbbfcf07a61fe3338fe79933"
+  },
+  "tests": {
+    "countPerDevice": 77
+  },
+  "accountAcceptance": "Public first-party contracts and isolated tests checked. Authenticated website changes and physical-device gestures still need acceptance.",
+  "sourceMatchesWorkspace": true
+}
