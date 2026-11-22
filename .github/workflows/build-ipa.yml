@@ -1,0 +1,76 @@
+name: Build iPhone and iPad IPA
+
+on:
+  workflow_dispatch:
+    inputs:
+      signing:
+        description: Unsigned needs your own signing before installation; signed requires configured real Apple secrets
+        type: choice
+        options:
+          - unsigned
+          - signed
+        default: unsigned
+      bundle_id:
+        description: App bundle identifier (must match the supplied profile for signed builds)
+        type: string
+        default: com.example.Komiic
+  push:
+    branches:
+      - main
+      - komiic-ios-build
+
+permissions:
+  contents: read
+
+concurrency:
+  group: komiic-ipa-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 20
+    env:
+      KOMIIC_BUNDLE_ID: ${{ inputs.bundle_id || 'com.example.Komiic' }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Verify Apple build tools
+        run: |
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+
+      - name: Test on iPhone and iPad, build and verify real device IPA
+        id: package
+        env:
+          SIGNING_MODE: ${{ inputs.signing || 'unsigned' }}
+          IOS_CERTIFICATE_P12_BASE64: ${{ secrets.IOS_CERTIFICATE_P12_BASE64 }}
+          IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+        run: |
+          if [[ "$SIGNING_MODE" == "signed" ]]; then
+            bash scripts/build_ipa.sh --signed
+          else
+            bash scripts/build_ipa.sh --unsigned
+          fi
+
+      - name: Upload IPA, verification, screenshots and build logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: Komiic-iPhone-iPad-${{ inputs.signing || 'unsigned' }}-${{ github.run_number }}
+          path: build/ipa.*/artifacts/
+          if-no-files-found: warn
+          retention-days: 7
+          compression-level: 0
+
+      - name: Describe installation status
+        if: success()
+        env:
+          ARTIFACT_DIRECTORY: ${{ steps.package.outputs.artifact_dir }}
+        run: |
+          cat "$ARTIFACT_DIRECTORY/INSTALLATION.txt" >> "$GITHUB_STEP_SUMMARY"
+          printf '\nIncludes iPhone and iPad simulator screenshots, XCTest results, a device-code verification report, and SHA-256.\n' >> "$GITHUB_STEP_SUMMARY"

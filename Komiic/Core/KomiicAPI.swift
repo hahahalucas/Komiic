@@ -1,0 +1,285 @@
+import Foundation
+
+enum KomiicError: LocalizedError {
+    case invalidResponse
+    case http(Int)
+    case authenticationRequired
+    case imageQuotaExceeded
+    case rateLimited
+    case graphQL(String)
+    case notFound
+    case invalidImage
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidResponse: return "Komiic 返回了无法识别的数据，请重试或在官网检查连接。"
+        case .http(let status): return "连接 Komiic 失败（HTTP \(status)）。"
+        case .authenticationRequired: return "请先在账号页登录 Komiic，或重新登录以更新会话。"
+        case .imageQuotaExceeded: return "今日图片读取额度已用完，请登录官网查看额度，或在额度重置后重试。"
+        case .rateLimited: return "请求过于频繁，请稍后重试。"
+        case .graphQL(let message): return message
+        case .notFound: return "没有找到这部漫画。"
+        case .invalidImage: return "没有取得有效的漫画图片，请重新加载。"
+        }
+    }
+}
+
+/// Uses the same public operations and cookie session as komiic.cc.
+/// Endpoint and ticket protocol verified against its first-party client on 2026-11-18.
+struct KomiicAPI: Sendable {
+    static let pageSize = 30
+    let baseURL: URL
+    private let session: URLSession
+    private let imageSession: URLSession
+
+    private static let ticketImageSession: URLSession = {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.httpShouldSetCookies = false
+        configuration.httpCookieStorage = nil
+        configuration.urlCache = nil
+        configuration.timeoutIntervalForRequest = 45
+        configuration.timeoutIntervalForResource = 120
+        return URLSession(configuration: configuration)
+    }()
+
+    init(baseURL: URL = URL(string: "https://komiic.cc")!, session: URLSession = .shared,
+         imageSession: URLSession? = nil) {
+        self.baseURL = baseURL
+        self.session = session
+        self.imageSession = imageSession ?? Self.ticketImageSession
+    }
+
+    func catalog(feed: CatalogFeed, offset: Int = 0, filter: ContentFilter = .all) async throws -> [Comic] {
+        var pagination: [String: Any] = [
+            "limit": Self.pageSize, "offset": max(0, offset), "asc": false,
+            "orderBy": feed == .popular ? "MONTH_VIEWS" : feed == .newest ? "DATE_CREATED" : "DATE_UPDATED"
+        ]
+        if filter != .all { pagination["sexyLevel"] = filter.rawValue }
+        let operation: String
+        let query: String
+        switch feed {
+        case .updated:
+            operation = "recentUpdate"
+            query = "query recentUpdate($pagination: Pagination!) { comics: recentUpdate(pagination: $pagination) { \(Self.comicFields) } }"
+        case .newest:
+            operation = "newComics"
+            query = "query newComics($pagination: Pagination!) { comics: comicByCategories(categoryId: [], pagination: $pagination) { \(Self.comicFields) } }"
+        case .popular:
+            operation = "hotComics"
+            query = "query hotComics($pagination: Pagination!) { comics: hotComics(pagination: $pagination) { \(Self.comicFields) } }"
+        case .recommended:
+            operation = "topRecommendedComics"
+            query = "query topRecommendedComics($pagination: Pagination!) { comics: topRecommendedComics(period: MONTH, pagination: $pagination) { \(Self.comicFields) } }"
+        }
+        let data: ComicList = try await perform(operation, query: query, variables: ["pagination": pagination])
+        return data.comics.compactMap { $0 }.map(normalized)
+    }
+
+    /// Komiic search returns its complete result set; an optional offset returns its suffix.
+    func search(keyword: String, offset: Int = 0) async throws -> [Comic] {
+        let keyword = keyword.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !keyword.isEmpty else { return [] }
+        let query = "query searchComicsAndAuthors($keyword: String!) { searchComicsAndAuthors(keyword: $keyword) { comics { \(Self.comicFields) } } }"
+        let data: SearchResult = try await perform("searchComicsAndAuthors", query: query, variables: ["keyword": keyword])
+        return Array((data.searchComicsAndAuthors.comics ?? []).compactMap { $0 }
+            .dropFirst(max(0, offset))).map(normalized)
+    }
+
+    func comic(id: String) async throws -> Comic {
+        let query = "query comicById($comicId: ID!) { comicById(comicId: $comicId) { \(Self.comicFields) description } }"
+        let data: ComicResult = try await perform("comicById", query: query, variables: ["comicId": id])
+        guard let comic = data.comicById else { throw KomiicError.notFound }
+        return normalized(comic)
+    }
+
+    func chapters(comicID: String) async throws -> [Chapter] {
+        let query = "query chapterByComicId($comicId: ID!) { chaptersByComicId(comicId: $comicId) { id serial type size } }"
+        let data: ChapterResult = try await perform("chapterByComicId", query: query, variables: ["comicId": comicID])
+        return data.chaptersByComicId.compactMap { $0 }.sorted {
+            if $0.type != $1.type { return $0.type == "chapter" || ($0.type == "book" && $1.type != "chapter") }
+            return $0.serial.compare($1.serial, options: .numeric) == .orderedAscending
+        }
+    }
+
+    func pages(chapterID: String) async throws -> [ComicPage] {
+        let query = "query imagesByChapterId($chapterId: ID!) { imagesByChapterId(chapterId: $chapterId) { id kid width height } }"
+        let data: PageResult = try await perform("imagesByChapterId", query: query, variables: ["chapterId": chapterID])
+        return data.imagesByChapterId.compactMap { $0 }
+    }
+
+    /// Tickets are requested only when an image is needed, preserving the server's quota rules.
+    func imageRequest(for page: ComicPage) async throws -> URLRequest {
+        try await ticketRequest(kid: page.kid, refreshing: false)
+    }
+
+    func imageData(for page: ComicPage) async throws -> Data {
+        for attempt in 0...1 {
+            try Task.checkCancellation()
+            let request = try await ticketRequest(kid: page.kid, refreshing: attempt > 0)
+            let (data, response) = try await imageSession.data(for: request)
+            guard let http = response as? HTTPURLResponse else { throw KomiicError.invalidResponse }
+            if http.statusCode == 403 && attempt == 0 { continue }
+            try Self.checkStatus(http.statusCode)
+            guard !data.isEmpty, http.mimeType?.lowercased().hasPrefix("image/") == true else {
+                throw KomiicError.invalidImage
+            }
+            return data
+        }
+        throw KomiicError.authenticationRequired
+    }
+
+    func diagnose() async throws -> String {
+        let comics = try await catalog(feed: .updated)
+        return "已连接 \(baseURL.host ?? "Komiic")，成功读取 \(comics.count) 部漫画。"
+    }
+
+    private func ticketRequest(kid: String, refreshing: Bool) async throws -> URLRequest {
+        let operation = refreshing ? "refreshImageTicket" : "getImageTicket"
+        let kind = refreshing ? "mutation" : "query"
+        let query = "\(kind) \(operation)($kid: String!) { ticket: \(operation)(kid: $kid) { url ticket kid } }"
+        let data: TicketResult = try await perform(operation, query: query, variables: ["kid": kid])
+        guard let ticket = data.ticket, let url = normalizedURL(ticket.url),
+              url.scheme == "https", !ticket.ticket.isEmpty else { throw KomiicError.invalidResponse }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 45
+        request.httpShouldHandleCookies = false
+        request.setValue(ticket.ticket, forHTTPHeaderField: "X-Image-Ticket")
+        request.setValue("image/avif,image/webp,image/*,*/*;q=0.8", forHTTPHeaderField: "Accept")
+        request.setValue(baseURL.absoluteString + "/", forHTTPHeaderField: "Referer")
+        return request
+    }
+
+    private func perform<T: Decodable>(_ operation: String, query: String, variables: [String: Any]) async throws -> T {
+        try Task.checkCancellation()
+        try await refreshSessionIfNeeded()
+        var request = request(path: "api/query")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["operationName": operation, "query": query, "variables": variables])
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else { throw KomiicError.invalidResponse }
+        try Self.checkStatus(http.statusCode)
+        let decoder = JSONDecoder()
+        // Inspect errors first: nullable partial GraphQL data may not match the success type.
+        if let error = (try? decoder.decode(GraphQLProblems.self, from: data))?.errors?.first {
+            switch error.extensions?.code {
+            case "QUOTA_EXCEEDED": throw KomiicError.imageQuotaExceeded
+            case "UNAUTHENTICATED", "FORBIDDEN": throw KomiicError.authenticationRequired
+            default: throw KomiicError.graphQL(error.message)
+            }
+        }
+        let envelope: GraphQLResponse<T>
+        do { envelope = try decoder.decode(GraphQLResponse<T>.self, from: data) }
+        catch { throw KomiicError.invalidResponse }
+        guard let result = envelope.data else { throw KomiicError.invalidResponse }
+        return result
+    }
+
+    private func request(path: String) -> URLRequest {
+        var request = URLRequest(url: baseURL.appendingPathComponent(path))
+        request.httpMethod = "POST"
+        request.timeoutInterval = 30
+        request.httpShouldHandleCookies = true
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("zh-CN", forHTTPHeaderField: "Accept-Language")
+        request.setValue(baseURL.absoluteString, forHTTPHeaderField: "Origin")
+        request.setValue(baseURL.absoluteString + "/", forHTTPHeaderField: "Referer")
+        return request
+    }
+
+    private func refreshSessionIfNeeded() async throws {
+        try await SessionRefreshCoordinator.shared.refreshIfNeeded(
+            baseURL: baseURL, session: session, request: request(path: "auth/refresh")
+        )
+    }
+
+    private func normalized(_ comic: Comic) -> Comic {
+        var copy = comic
+        if let url = copy.imageUrl { copy.imageUrl = normalizedURL(url) }
+        return copy
+    }
+
+    /// The official client performs this rewrite for regional Komiic domains.
+    private func normalizedURL(_ url: URL) -> URL? {
+        guard let host = baseURL.host, host != "komiic.com", host.hasSuffix("komiic.cc"),
+              let urlHost = url.host, ["img.komiic.com", "public.komiic.com", "download.komiic.com"].contains(urlHost),
+              var parts = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return url }
+        parts.host = urlHost.replacingOccurrences(of: "komiic.com", with: "komiic.cc")
+        return parts.url
+    }
+
+    fileprivate static func checkStatus(_ status: Int) throws {
+        switch status {
+        case 200..<300: return
+        case 401, 403: throw KomiicError.authenticationRequired
+        case 402: throw KomiicError.imageQuotaExceeded
+        case 429: throw KomiicError.rateLimited
+        default: throw KomiicError.http(status)
+        }
+    }
+
+    private static let comicFields = """
+        id title status imageUrl authors { id name } categories { id name }
+        dateUpdated monthViews views favoriteCount lastBookUpdate lastChapterUpdate
+        """
+}
+
+/// All client instances for one origin await the same refresh, including reader/download clients.
+/// An individual cancelled page request does not cancel the refresh needed by other callers.
+private actor SessionRefreshCoordinator {
+    static let shared = SessionRefreshCoordinator()
+    private var inFlight: [String: Task<Void, Error>] = [:]
+
+    func refreshIfNeeded(baseURL: URL, session: URLSession, request: URLRequest) async throws {
+        let key = "\(baseURL.scheme ?? "https")://\(baseURL.host ?? ""):\(baseURL.port ?? 443)"
+        if let pending = inFlight[key] {
+            try await pending.value
+            return
+        }
+        guard Self.needsRefresh(baseURL) else { return }
+        let refresh = Task<Void, Error> {
+            // Cookies may have changed while this actor/task was waiting for execution.
+            guard Self.needsRefresh(baseURL) else { return }
+            let (_, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse else { throw KomiicError.invalidResponse }
+            try KomiicAPI.checkStatus(http.statusCode)
+        }
+        inFlight[key] = refresh
+        defer { inFlight.removeValue(forKey: key) }
+        try await refresh.value
+    }
+
+    private static func needsRefresh(_ baseURL: URL) -> Bool {
+        guard let token = HTTPCookieStorage.shared.cookies(for: baseURL)?.first(where: { $0.name == "komiic-access-token" })?.value else { return false }
+        let segments = token.split(separator: ".")
+        guard segments.count == 3 else { return false }
+        var payload = String(segments[1]).replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+        payload += String(repeating: "=", count: (4 - payload.count % 4) % 4)
+        guard let bytes = Data(base64Encoded: payload),
+              let object = try? JSONSerialization.jsonObject(with: bytes) as? [String: Any],
+              let expiration = object["exp"] as? Double else { return false }
+        return expiration < Date().timeIntervalSince1970 + 300
+    }
+}
+
+private struct GraphQLResponse<T: Decodable>: Decodable {
+    let data: T?
+    let errors: [GraphQLError]?
+}
+private struct GraphQLProblems: Decodable { let errors: [GraphQLError]? }
+private struct GraphQLError: Decodable {
+    let message: String
+    let extensions: Extensions?
+    struct Extensions: Decodable { let code: String? }
+}
+private struct ComicList: Decodable { let comics: [Comic?] }
+private struct SearchResult: Decodable {
+    let searchComicsAndAuthors: Matches
+    struct Matches: Decodable { let comics: [Comic?]? }
+}
+private struct ComicResult: Decodable { let comicById: Comic? }
+private struct ChapterResult: Decodable { let chaptersByComicId: [Chapter?] }
+private struct PageResult: Decodable { let imagesByChapterId: [ComicPage?] }
+private struct TicketResult: Decodable {
+    let ticket: Ticket?
+    struct Ticket: Decodable { let url: URL; let ticket: String; let kid: String }
+}

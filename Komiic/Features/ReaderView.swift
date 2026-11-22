@@ -1,0 +1,287 @@
+import SwiftUI
+import UIKit
+
+struct ReaderView: View {
+    let comic: Comic
+    let chapter: Chapter
+    var initialPage = 0
+    @EnvironmentObject private var library: LibraryStore
+    @EnvironmentObject private var downloads: DownloadStore
+    @EnvironmentObject private var settings: ReaderSettings
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var pages: [ComicPage] = []
+    @State private var loading = true
+    @State private var error: String?
+    @State private var currentPage = 0
+    @State private var scrollID: Int?
+    @State private var controls = true
+    @State private var retry = 0
+    private var isOffline: Bool { downloads.isDownloaded(chapterID: chapter.id) }
+    private var foreground: Color { settings.einkMode.enabled ? .black : .white }
+
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack {
+                (settings.einkMode.enabled ? Color.white : Color.black).ignoresSafeArea()
+                if loading {
+                    ProgressView("正在载入章节…").tint(foreground).foregroundStyle(foreground)
+                } else if let error {
+                    VStack(spacing: 18) {
+                        EmptyState(symbol: "wifi.exclamationmark", title: "暂时无法阅读", message: error,
+                                   actionTitle: "重试", action: { retry += 1 })
+                        Button("返回") { dismiss() }
+                    }.foregroundStyle(foreground)
+                } else if pages.isEmpty {
+                    EmptyState(symbol: "doc", title: "本章暂无页面", message: "可以稍后重试，或在官网查看。",
+                               actionTitle: "返回", action: { dismiss() }).foregroundStyle(foreground)
+                } else {
+                    if settings.readingMode == .scroll {
+                        ScrollView {
+                            LazyVStack(spacing: settings.einkMode.enabled ? 0 : 8) {
+                                ForEach(Array(pages.enumerated()), id: \.offset) { index, page in
+                                    ReaderPageImage(page: page, chapterID: chapter.id, allowNetwork: !isOffline)
+                                        .frame(width: min(geometry.size.width, 1_000))
+                                        .id(index)
+                                }
+                            }
+                            .scrollTargetLayout()
+                            .frame(maxWidth: .infinity)
+                        }
+                        .scrollPosition(id: $scrollID, anchor: .top)
+                        .onChange(of: scrollID) { _, value in
+                            guard let value else { return }
+                            currentPage = value
+                            saveProgress()
+                        }
+                        .onTapGesture { toggleControls() }
+                    } else {
+                        TabView(selection: $currentPage) {
+                            ForEach(Array(pages.enumerated()), id: \.offset) { index, page in
+                                ScrollView([.vertical, .horizontal]) {
+                                    ReaderPageImage(page: page, chapterID: chapter.id, allowNetwork: !isOffline, shouldLoad: index == currentPage)
+                                        .frame(width: min(geometry.size.width, 1_000))
+                                        .frame(minHeight: geometry.size.height)
+                                        .frame(maxWidth: .infinity)
+                                }
+                                .tag(index)
+                                .onTapGesture { toggleControls() }
+                            }
+                        }
+                        .tabViewStyle(.page(indexDisplayMode: .never))
+                        .onChange(of: currentPage) { _, _ in saveProgress() }
+                    }
+                    if controls { readerControls }
+                }
+            }
+            .statusBarHidden(!controls)
+            .preferredColorScheme(settings.einkMode.enabled ? .light : .dark)
+        }
+        .task(id: retry) { await loadPages() }
+        .onDisappear {
+            saveProgress()
+            if settings.cachePolicy == .afterReading { downloads.clearCache(chapterID: chapter.id) }
+        }
+        .onChange(of: settings.readingMode) { _, mode in
+            if mode == .scroll { scrollID = currentPage }
+        }
+    }
+
+    private var readerControls: some View {
+        VStack(spacing: 18) {
+            HStack(spacing: 8) {
+                Button { dismiss() } label: {
+                    Image(systemName: "chevron.down").font(.body.weight(.semibold))
+                        .frame(width: 44, height: 44)
+                        .contentShape(Circle())
+                }
+                .accessibilityLabel("关闭阅读器")
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(comic.title).font(.subheadline.bold()).lineLimit(1)
+                    Text(chapter.displayTitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                readerMenu
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .modifier(ReaderChromeSurface(ink: settings.einkMode.enabled, cornerRadius: 32))
+
+            Spacer(minLength: 0)
+            readerTransport
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(foreground)
+        .frame(maxWidth: 680)
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+        .padding(.bottom, 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .transition(.opacity)
+    }
+
+    private var readerMenu: some View {
+        Menu {
+            Picker("阅读方式", selection: $settings.readingMode) {
+                ForEach(ReadingMode.allCases) { Text($0.title).tag($0) }
+            }
+            Toggle("柔和显示", isOn: $settings.dimImages)
+            Button(settings.einkMode.enabled ? "关闭墨水模式" : "开启墨水模式") {
+                settings.einkMode = settings.einkMode.enabled ? .off : .on
+            }
+            if !isOffline {
+                Button("下载本章", systemImage: "arrow.down.circle") { scheduleDownload() }
+            }
+        } label: {
+            Image(systemName: "slider.horizontal.3").font(.body.weight(.semibold))
+                .frame(width: 44, height: 44)
+                .contentShape(Circle())
+        }
+        .accessibilityLabel("阅读设置")
+    }
+
+    private var readerTransport: some View {
+        VStack(spacing: 5) {
+            HStack(spacing: 12) {
+                Text("\(currentPage + 1)").monospacedDigit().frame(minWidth: 24)
+                Slider(value: Binding(get: { Double(currentPage) }, set: { move(to: Int($0.rounded())) }),
+                       in: 0...Double(max(1, pages.count - 1)), step: 1)
+                    .disabled(pages.count < 2)
+                    .tint(settings.einkMode.enabled ? .black : KomiicTheme.accent)
+                    .accessibilityLabel("阅读页码")
+                    .accessibilityValue("第 \(currentPage + 1) 页，共 \(pages.count) 页")
+                Text("\(pages.count)").monospacedDigit()
+            }
+            .font(.caption.weight(.medium))
+
+            HStack(spacing: 12) {
+                Button { move(to: currentPage - 1) } label: {
+                    Image(systemName: "chevron.left").font(.body.weight(.semibold))
+                        .frame(width: 48, height: 44).contentShape(Circle())
+                }
+                .disabled(currentPage == 0)
+                .accessibilityLabel("上一页")
+                Spacer(minLength: 0)
+                Button { library.toggleBookmark(comic: comic, chapter: chapter, page: currentPage) } label: {
+                    Label("书签", systemImage: library.isBookmarked(chapterID: chapter.id, page: currentPage) ? "bookmark.fill" : "bookmark")
+                        .font(.subheadline.weight(.medium)).frame(minHeight: 44)
+                }
+                .accessibilityLabel(library.isBookmarked(chapterID: chapter.id, page: currentPage) ? "移除当前页书签" : "添加当前页书签")
+                Spacer(minLength: 0)
+                Button { move(to: currentPage + 1) } label: {
+                    Image(systemName: "chevron.right").font(.body.weight(.semibold))
+                        .frame(width: 48, height: 44).contentShape(Circle())
+                }
+                .disabled(currentPage >= pages.count - 1)
+                .accessibilityLabel("下一页")
+            }
+
+            Label(isOffline ? "离线阅读" : "在线阅读 · 自动缓存", systemImage: isOffline ? "checkmark.circle" : "network")
+                .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 12)
+        .padding(.bottom, 13)
+        .modifier(ReaderChromeSurface(ink: settings.einkMode.enabled, cornerRadius: 28))
+    }
+
+    @MainActor private func loadPages() async {
+        loading = true; error = nil
+        do {
+            if let offline = downloads.items.first(where: { $0.id == chapter.id }), !offline.pages.isEmpty {
+                pages = offline.pages
+            } else {
+                pages = try await KomiicAPI().pages(chapterID: chapter.id)
+            }
+            try Task.checkCancellation()
+            currentPage = min(max(0, initialPage), max(0, pages.count - 1))
+            scrollID = currentPage
+            saveProgress()
+            if settings.loadingMode == .download && !isOffline { scheduleDownload() }
+        } catch is CancellationError {
+        } catch { self.error = error.localizedDescription }
+        loading = false
+    }
+    private func move(to page: Int) {
+        currentPage = min(max(0, page), max(0, pages.count - 1))
+        scrollID = currentPage
+        saveProgress()
+    }
+    private func saveProgress() {
+        guard !pages.isEmpty else { return }
+        library.recordProgress(comic: comic, chapter: chapter, page: currentPage, totalPages: pages.count)
+    }
+    private func toggleControls() {
+        if settings.einkMode.enabled || reduceMotion { controls.toggle() }
+        else { withAnimation(.easeInOut(duration: 0.18)) { controls.toggle() } }
+    }
+    private func scheduleDownload() {
+        Task { await downloads.download(comic: comic, chapter: chapter, pages: pages, baseURL: URL(string: "https://komiic.cc")!) }
+    }
+}
+
+/// Reading chrome uses the system glass surface; electronic ink mode stays opaque.
+private struct ReaderChromeSurface: ViewModifier {
+    let ink: Bool
+    let cornerRadius: CGFloat
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if ink {
+            content
+                .background(Color.white, in: RoundedRectangle(cornerRadius: cornerRadius))
+                .overlay(RoundedRectangle(cornerRadius: cornerRadius).stroke(Color.black.opacity(0.18), lineWidth: 1))
+        } else {
+            content.komiicGlass(cornerRadius: cornerRadius)
+        }
+    }
+}
+
+private struct ReaderPageImage: View {
+    let page: ComicPage
+    let chapterID: String
+    let allowNetwork: Bool
+    var shouldLoad = true
+    @EnvironmentObject private var downloads: DownloadStore
+    @EnvironmentObject private var settings: ReaderSettings
+    @State private var image: UIImage?
+    @State private var error: String?
+    @State private var retry = 0
+    private var ratio: CGFloat { page.width > 0 && page.height > 0 ? CGFloat(page.width) / CGFloat(page.height) : 0.7 }
+
+    var body: some View {
+        ZStack {
+            if let image {
+                Image(uiImage: image).resizable().scaledToFit()
+                    .grayscale(settings.einkMode.enabled ? 1 : 0)
+                    .brightness(settings.dimImages ? -0.16 : 0)
+            } else {
+                Rectangle().fill(settings.einkMode.enabled ? Color(white: 0.96) : Color(white: 0.10))
+                if let error {
+                    VStack(spacing: 14) {
+                        Image(systemName: "photo.badge.exclamationmark").font(.title2)
+                        Text(error).font(.caption).multilineTextAlignment(.center).frame(maxWidth: 280)
+                        Button("重新载入这一页") { retry += 1 }.buttonStyle(.bordered)
+                    }.foregroundStyle(settings.einkMode.enabled ? .black : .white).padding(20)
+                } else {
+                    ProgressView().tint(settings.einkMode.enabled ? .black : .white)
+                }
+            }
+        }
+        .aspectRatio(ratio, contentMode: .fit)
+        .accessibilityLabel("漫画页面")
+        .task(id: "\(page.id)-\(retry)-\(shouldLoad)") {
+            guard shouldLoad, image == nil else { return }
+            do {
+                error = nil
+                let data = try await downloads.imageData(page: page, chapterID: chapterID, baseURL: URL(string: "https://komiic.cc")!,
+                                                        cachePolicy: settings.cachePolicy, allowNetwork: allowNetwork)
+                try Task.checkCancellation()
+                guard let decoded = UIImage(data: data) else { throw URLError(.cannotDecodeContentData) }
+                image = decoded
+            } catch is CancellationError {
+            } catch let urlError as URLError where urlError.code == .cancelled {
+            } catch { self.error = error.localizedDescription }
+        }
+    }
+}

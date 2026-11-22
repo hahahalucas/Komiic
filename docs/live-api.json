@@ -1,0 +1,39 @@
+{
+  "checkedDate": "2026-11-18",
+  "source": "https://komiic.cc/assets/index-Cu-xtsAi.js",
+  "endpoint": "https://komiic.cc/api/query",
+  "authentication": {
+    "method": "First-party cookies shared from official WKWebView login",
+    "loginPath": "/login",
+    "profilePath": "/profile",
+    "refreshPath": "/auth/refresh",
+    "accessTokenCookieName": "komiic-access-token",
+    "bearerAuthorizationRequired": false
+  },
+  "verifiedOperations": [
+    { "operation": "recentUpdate", "result": "HTTP 200; comic metadata, author/category objects and update counts" },
+    { "operation": "hotComics", "result": "HTTP 200; pagination supported; MONTH_VIEWS sort used by native catalog" },
+    { "operation": "comicByCategories", "result": "HTTP 200; categoryId=[] and DATE_CREATED sort for recently added comics" },
+    { "operation": "topRecommendedComics", "result": "HTTP 200; period=MONTH and Pagination input" },
+    { "operation": "searchComicsAndAuthors", "result": "HTTP 200; keyword REBOOT returned 9 comics; server returns whole result set" },
+    { "operation": "comicById", "result": "HTTP 200; id/title/description" },
+    { "operation": "chaptersByComicId", "result": "HTTP 200; serial/type/size available; chapter and book entries returned" },
+    { "operation": "imagesByChapterId", "result": "HTTP 200; 54 page records with id/kid/width/height" },
+    { "operation": "getImageTicket", "result": "HTTP 200; url/ticket/kid available; no ticket saved in this file" }
+  ],
+  "verifiedFilter": { "field": "Pagination.sexyLevel", "testedValue": 0, "firstPartyChoices": [null, 0, 1, 2, 3, 4, 5], "specialLabel": "Value 4 is labelled >=4 by the official client" },
+  "imageDelivery": {
+    "header": "X-Image-Ticket",
+    "domainRewrite": "Official client rewrites img/public/download.komiic.com to the selected regional domain, e.g. img.komiic.cc",
+    "cookiesSentToImageCDN": false,
+    "smokeTest": { "status": 200, "contentType": "image/webp", "bytes": 256378 },
+    "refreshOnExpiredTicket": "refreshImageTicket mutation verified in first-party script; native client retries once after image HTTP 403",
+    "quotaHandling": "Native client surfaces HTTP 402 and GraphQL QUOTA_EXCEEDED; does not bypass quotas"
+  },
+  "officialWebRoutes": { "favorites": "/favorite", "bookmarks": "/bookmarks", "shelves": "/folder", "history": "/recent", "settings": "/settings", "warningPreferences": "/settings/warnings", "blockedComics": "/blocked" },
+  "limitations": [
+    "Authenticated account operations were not exercised because no user credentials were supplied.",
+    "The GraphQL service is an internal website interface and may change independently of this client.",
+    "Swift compilation and iOS simulator execution require Xcode on macOS."
+  ]
+}

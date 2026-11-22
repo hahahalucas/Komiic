@@ -1,0 +1,3 @@
+# Optional development-only Swift syntax grammar; the iOS app has no third-party dependencies.
+tree-sitter==0.26.1
+tree-sitter-swift==0.7.4

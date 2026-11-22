@@ -1,0 +1,23 @@
+# Xcode user state and generated products
+DerivedData/
+build/
+*.xcuserstate
+xcuserdata/
+*.xcresult/
+*.ipa
+*.dSYM/
+.DS_Store
+
+# Local validation tools and Python caches
+.validation-packages/
+__pycache__/
+*.pyc
+
+# Temporary first-party API research captures (no credentials)
+komiic-home.html
+komiic-index.js
+komiic-probe*.json
+
+# Local reference screenshots and exported project archive
+/IMG_*.PNG
+/Komiic-iOS.zip
