@@ -12,14 +12,14 @@ struct AuthorView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                SectionHeading(title: author.name, subtitle: "������Ʒ")
+                SectionHeading(title: author.name, subtitle: "作者作品")
                 if loading {
-                    ProgressView("���ڼ�����Ʒ��").frame(maxWidth: .infinity).padding(30)
+                    ProgressView("正在加载作品…").frame(maxWidth: .infinity).padding(30)
                 } else if let error {
-                    EmptyState(symbol: "wifi.exclamationmark", title: "��ʱ�޷�����", message: error,
-                               actionTitle: "����", action: { retry += 1 })
+                    EmptyState(symbol: "wifi.exclamationmark", title: "暂时无法加载", message: error,
+                               actionTitle: "重试", action: { retry += 1 })
                 } else if comics.isEmpty {
-                    EmptyState(symbol: "books.vertical", title: "������Ʒ", message: "δ�ҵ���λ���ߵ�������")
+                    EmptyState(symbol: "books.vertical", title: "暂无作品", message: "未找到这位作者的漫画。")
                 } else {
                     ComicGrid(comics: comics.filter { !library.isBlocked($0) })
                 }

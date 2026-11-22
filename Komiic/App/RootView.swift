@@ -6,8 +6,8 @@ enum AppTab: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .home: return "��ҳ"; case .favorites: return "ϲ��"; case .library: return "���Ͽ�"
-        case .account: return "�˺�"
+        case .home: return "首页"; case .favorites: return "喜爱"; case .library: return "资料库"
+        case .account: return "账号"
         }
     }
     var symbol: String {
@@ -69,11 +69,11 @@ struct RootView: View {
             selected = .home
             searchPrompt = false
         }
-        .alert("δ����ɲ���", isPresented: Binding(get: { library.lastError != nil || downloads.lastError != nil }, set: { visible in
+        .alert("未能完成操作", isPresented: Binding(get: { library.lastError != nil || downloads.lastError != nil }, set: { visible in
             if !visible { library.lastError = nil; downloads.lastError = nil }
         })) {
-            Button("֪����") { library.lastError = nil; downloads.lastError = nil }
-        } message: { Text(library.lastError ?? downloads.lastError ?? "���Ժ����ԡ�") }
+            Button("知道了") { library.lastError = nil; downloads.lastError = nil }
+        } message: { Text(library.lastError ?? downloads.lastError ?? "请稍后重试。") }
         .task { seenCompleted = completedIDs; started = true }
         .task(id: settings.contentMode) { await refreshOfficialData() }
         .onChange(of: completedIDs) { _, ids in
@@ -84,8 +84,8 @@ struct RootView: View {
             for id in newIDs {
                 guard let item = downloads.items.first(where: { $0.id == id }) else { continue }
                 let content = UNMutableNotificationContent()
-                content.title = "�½��������"
-                content.body = "\(item.comic.title) �� \(item.chapter.displayTitle)"
+                content.title = "章节下载完成"
+                content.body = "\(item.comic.title) · \(item.chapter.displayTitle)"
                 content.sound = .default
                 UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: "download-\(id)", content: content, trigger: nil)) { _ in }
             }
@@ -102,10 +102,10 @@ struct RootView: View {
     @available(iOS 18.0, *)
     private var modernTabs: some View {
         TabView(selection: $selected) {
-            Tab("��ҳ", systemImage: AppTab.home.symbol, value: AppTab.home) { screen(.home) }
-            Tab("ϲ��", systemImage: AppTab.favorites.symbol, value: AppTab.favorites) { screen(.favorites) }
-            Tab("���Ͽ�", systemImage: AppTab.library.symbol, value: AppTab.library) { screen(.library) }
-            Tab("�˺�", systemImage: AppTab.account.symbol, value: AppTab.account) { screen(.account) }
+            Tab("首页", systemImage: AppTab.home.symbol, value: AppTab.home) { screen(.home) }
+            Tab("喜爱", systemImage: AppTab.favorites.symbol, value: AppTab.favorites) { screen(.favorites) }
+            Tab("资料库", systemImage: AppTab.library.symbol, value: AppTab.library) { screen(.library) }
+            Tab("账号", systemImage: AppTab.account.symbol, value: AppTab.account) { screen(.account) }
         }
         .tabViewStyle(.tabBarOnly)
     }
@@ -164,28 +164,28 @@ private struct TabRootScreen: View {
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(KomiicTheme.canvas)
-                .navigationTitle(settings.contentMode == .adult ? "H ���� �� \(tab.title)" : tab.title)
+                .navigationTitle(settings.contentMode == .adult ? "H 漫画 · \(tab.title)" : tab.title)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItemGroup(placement: .topBarTrailing) {
                         Button(action: showSearch) { Image(systemName: "magnifyingglass") }
-                            .accessibilityLabel("��������")
+                            .accessibilityLabel("搜索漫画")
                         Menu {
-                            NavigationLink(value: MenuRoute.blocked) { Label("��������", systemImage: "eye.slash") }
-                            NavigationLink(value: MenuRoute.warnings) { Label("���ݾ���ƫ��", systemImage: "shield") }
+                            NavigationLink(value: MenuRoute.blocked) { Label("屏蔽漫画", systemImage: "eye.slash") }
+                            NavigationLink(value: MenuRoute.warnings) { Label("内容警告偏好", systemImage: "shield") }
                             Divider()
                             Button {
                                 let mode: ComicContentMode = settings.contentMode == .general ? .adult : .general
                                 library.selectMode(mode)
                                 settings.contentMode = mode
                             } label: {
-                                Label(settings.contentMode == .general ? "�л��� H ���� �� 18+" : "�л���һ������", systemImage: "arrow.triangle.2.circlepath")
+                                Label(settings.contentMode == .general ? "切换到 H 漫画 · 18+" : "切换到一般漫画", systemImage: "arrow.triangle.2.circlepath")
                             }
                             Button {
                                 settings.theme = colorScheme == .dark ? .light : .dark
-                            } label: { Label("�л�����", systemImage: colorScheme == .dark ? "sun.max" : "moon") }
+                            } label: { Label("切换主题", systemImage: colorScheme == .dark ? "sun.max" : "moon") }
                         } label: { Image(systemName: "person.crop.circle") }
-                        .accessibilityLabel("���๦��")
+                        .accessibilityLabel("更多功能")
                     }
                 }
                 .navigationDestination(for: Comic.self) { ComicDetailView(comic: $0) }
@@ -212,9 +212,9 @@ private struct TabRootScreen: View {
         case .account: AccountView(onOpenFavorites: openFavorites, onOpenBookmarks: openBookmarks, onOpenShelves: openShelves)
         case .library:
             VStack(spacing: 0) {
-                Picker("���Ͽ�", selection: $librarySection) {
-                    Text("��ǩ").tag(LibrarySection.bookmarks)
-                    Text("���").tag(LibrarySection.shelves)
+                Picker("资料库", selection: $librarySection) {
+                    Text("书签").tag(LibrarySection.bookmarks)
+                    Text("书柜").tag(LibrarySection.shelves)
                 }
                 .pickerStyle(.segmented)
                 .padding(.horizontal, 18).padding(.vertical, 12)

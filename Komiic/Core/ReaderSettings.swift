@@ -6,7 +6,7 @@ enum AppTheme: String, CaseIterable, Identifiable, Codable {
     case system, light, dark
     var id: String { rawValue }
     var title: String {
-        switch self { case .system: return "����ϵͳ"; case .light: return "ǳɫ"; case .dark: return "��ɫ" }
+        switch self { case .system: return "跟随系统"; case .light: return "浅色"; case .dark: return "深色" }
     }
     var colorScheme: ColorScheme? {
         switch self { case .system: return nil; case .light: return .light; case .dark: return .dark }
@@ -16,7 +16,7 @@ enum AppTheme: String, CaseIterable, Identifiable, Codable {
 enum ReadingMode: String, CaseIterable, Identifiable, Codable {
     case scroll, paged
     var id: String { rawValue }
-    var title: String { self == .scroll ? "�������" : "����ҳ" }
+    var title: String { self == .scroll ? "纵向滚动" : "横向翻页" }
 }
 
 /// These cases describe when disposable online image files should be removed.
@@ -24,7 +24,7 @@ enum CachePolicy: String, CaseIterable, Identifiable, Codable {
     case never, afterReading, oneDay
     var id: String { rawValue }
     var title: String {
-        switch self { case .never: return "�����"; case .afterReading: return "�����"; case .oneDay: return "24 Сʱ��" }
+        switch self { case .never: return "不清除"; case .afterReading: return "读完后"; case .oneDay: return "24 小时后" }
     }
 }
 
@@ -32,7 +32,7 @@ enum EInkMode: String, CaseIterable, Identifiable, Codable {
     case automatic, on, off
     var id: String { rawValue }
     var title: String {
-        switch self { case .automatic: return "�Զ�"; case .on: return "����"; case .off: return "�ر�" }
+        switch self { case .automatic: return "自动"; case .on: return "开启"; case .off: return "关闭" }
     }
     // iPhone and iPad do not expose an electronic ink display capability.
     var enabled: Bool { self == .on }
@@ -42,7 +42,7 @@ enum ReaderOrientation: String, CaseIterable, Identifiable, Codable {
     case system, portrait, landscape
     var id: String { rawValue }
     var title: String {
-        switch self { case .system: return "����ϵͳ"; case .portrait: return "��������"; case .landscape: return "��������" }
+        switch self { case .system: return "跟随系统"; case .portrait: return "锁定竖向"; case .landscape: return "锁定横向" }
     }
     var mask: UIInterfaceOrientationMask {
         switch self { case .system: return .allButUpsideDown; case .portrait: return .portrait; case .landscape: return .landscape }
@@ -52,7 +52,7 @@ enum ReaderOrientation: String, CaseIterable, Identifiable, Codable {
 enum ImageLoadingMode: String, CaseIterable, Identifiable, Codable {
     case online, download
     var id: String { rawValue }
-    var title: String { self == .online ? "�����Ķ����Զ����棩" : "�������أ����ô洢��" }
+    var title: String { self == .online ? "在线阅读（自动缓存）" : "离线下载（永久存储）" }
 }
 
 @MainActor
@@ -197,7 +197,7 @@ final class ReaderSettings: ObservableObject {
         } catch is CancellationError { return nil
         } catch {
             guard !Task.isCancelled, mode == contentMode else { return nil }
-            return "�ѱ�������ƫ�ã�����ͬ��δ��ɡ�\(error.localizedDescription)"
+            return "已保留本机偏好，官网同步未完成。\(error.localizedDescription)"
         }
     }
 

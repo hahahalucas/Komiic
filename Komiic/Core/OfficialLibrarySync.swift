@@ -65,7 +65,7 @@ struct OfficialLibrarySnapshot {
             })?.element else { return nil }
             // The official history response does not include chapter titles or page totals.
             // A zero total means unknown until the reader fetches the actual chapter pages.
-            return ReadingProgress(comic: row.comic, chapter: Chapter(id: latest.chapterId, title: "�����Ķ�"),
+            return ReadingProgress(comic: row.comic, chapter: Chapter(id: latest.chapterId, title: "继续阅读"),
                 page: max(0, latest.page), totalPages: 0,
                 date: Self.date(latest.updatedAt) ?? Self.date(row.lastDate) ?? .distantPast)
         }

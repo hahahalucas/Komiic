@@ -78,10 +78,10 @@ final class OfficialLibrarySyncTests: XCTestCase {
     func testSignedInCloudPagesAreAuthoritativeAndLocalArchiveSurvivesLogout() async throws {
         let url = try directory()
         let server = OfficialLibraryStub()
-        let local = Comic(id: "local", title: "�����ղ�")
-        let cloud = Comic(id: "cloud", title: "�����ղ�")
+        let local = Comic(id: "local", title: "本机收藏")
+        let cloud = Comic(id: "cloud", title: "官网收藏")
         await server.setFavorites([cloud], mode: .general)
-        await server.setFavorites([Comic(id: "later-page", title: "����ҳ")], mode: .general, offset: 30)
+        await server.setFavorites([Comic(id: "later-page", title: "后续页")], mode: .general, offset: 30)
         let store = LibraryStore(directoryURL: url, officialClient: await server.client())
         store.toggleFavorite(local)
         await store.refreshOfficialLibrary()
@@ -101,7 +101,7 @@ final class OfficialLibrarySyncTests: XCTestCase {
 
     func testWebsiteFavoriteAndHistoryRemovalsDoNotReviveLocalCopies() async throws {
         let server = OfficialLibraryStub()
-        let comic = Comic(id: "shared", title: "���Ƴ�")
+        let comic = Comic(id: "shared", title: "已移除")
         let chapter = Chapter(id: "chapter")
         let store = LibraryStore(directoryURL: try directory(), officialClient: await server.client())
         store.toggleFavorite(comic)
@@ -119,7 +119,7 @@ final class OfficialLibrarySyncTests: XCTestCase {
         XCTAssertTrue(store.favorites.isEmpty)
         XCTAssertTrue(store.history.isEmpty)
         XCTAssertTrue(store.readChapterIDs.isEmpty)
-        store.toggleFavorite(Comic(id: "cloud-only", title: "������"))
+        store.toggleFavorite(Comic(id: "cloud-only", title: "仅官网"))
         store.recordProgress(comic: comic, chapter: chapter, page: 6, totalPages: 8)
         store.resetOfficialSession()
         XCTAssertEqual(store.favorites.map(\.id), [comic.id])
@@ -128,7 +128,7 @@ final class OfficialLibrarySyncTests: XCTestCase {
 
     func testCloudHistoryUsesLatestChapterAndPreservesUnknownPageTotal() async throws {
         let server = OfficialLibraryStub()
-        let comic = Comic(id: "history", title: "��������Ķ�")
+        let comic = Comic(id: "history", title: "官网最近阅读")
         let history = OfficialReadingHistory(comic: comic, chapters: [
             OfficialChapterProgress(chapterId: "newest", page: 8, updatedAt: "2026-11-22T06:30:00.500Z"),
             OfficialChapterProgress(chapterId: "older", page: 3, updatedAt: "2026-11-20T06:30:00Z")
@@ -148,7 +148,7 @@ final class OfficialLibrarySyncTests: XCTestCase {
     func testFailedMutationSurvivesRestartAndNeverReplaysForAnotherAccount() async throws {
         let url = try directory()
         let server = OfficialLibraryStub()
-        let comic = Comic(id: "retry", title: "��ͬ��")
+        let comic = Comic(id: "retry", title: "待同步")
         let store = LibraryStore(directoryURL: url, officialClient: await server.client())
         await store.refreshOfficialLibrary()
         await server.setFailingWrites(true)
@@ -180,7 +180,7 @@ final class OfficialLibrarySyncTests: XCTestCase {
         await store.refreshOfficialLibrary()
         store.selectMode(.adult)
         await store.refreshOfficialLibrary()
-        let comic = Comic(id: "general", title: "һ������")
+        let comic = Comic(id: "general", title: "一般漫画")
         let chapter = Chapter(id: "chapter")
         store.recordProgress(comic: comic, chapter: chapter, page: 1, totalPages: 12, mode: .general)
         store.recordProgress(comic: comic, chapter: chapter, page: 7, totalPages: 12, mode: .general)
@@ -195,7 +195,7 @@ final class OfficialLibrarySyncTests: XCTestCase {
 
     func testCompletedFavoriteRemovalStillWinsOverAnOlderInFlightSnapshot() async throws {
         let server = OfficialLibraryStub()
-        let comic = Comic(id: "cloud", title: "�����ղ�")
+        let comic = Comic(id: "cloud", title: "官网收藏")
         await server.setFavorites([comic], mode: .general)
         let store = LibraryStore(directoryURL: try directory(), officialClient: await server.client())
         await store.refreshOfficialLibrary()

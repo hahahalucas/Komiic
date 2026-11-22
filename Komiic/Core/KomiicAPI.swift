@@ -12,14 +12,14 @@ enum KomiicError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .invalidResponse: return "Komiic �������޷�ʶ������ݣ������Ի��ڹ���������ӡ�"
-        case .http(let status): return "���� Komiic ʧ�ܣ�HTTP \(status)����"
-        case .authenticationRequired: return "�������˺�ҳ��¼ Komiic�������µ�¼�Ը��»Ự��"
-        case .imageQuotaExceeded: return "����ͼƬ��ȡ��������꣬���¼�����鿴��ȣ����ڶ�����ú����ԡ�"
-        case .rateLimited: return "�������Ƶ�������Ժ����ԡ�"
+        case .invalidResponse: return "Komiic 返回了无法识别的数据，请重试或在官网检查连接。"
+        case .http(let status): return "连接 Komiic 失败（HTTP \(status)）。"
+        case .authenticationRequired: return "请先在账号页登录 Komiic，或重新登录以更新会话。"
+        case .imageQuotaExceeded: return "今日图片读取额度已用完，请登录官网查看额度，或在额度重置后重试。"
+        case .rateLimited: return "请求过于频繁，请稍后重试。"
         case .graphQL(let message): return message
-        case .notFound: return "û���ҵ��ⲿ������"
-        case .invalidImage: return "û��ȡ����Ч������ͼƬ�������¼��ء�"
+        case .notFound: return "没有找到这部漫画。"
+        case .invalidImage: return "没有取得有效的漫画图片，请重新加载。"
         }
     }
 }
@@ -273,7 +273,7 @@ struct KomiicAPI: Sendable {
 
     func diagnose() async throws -> String {
         let comics = try await catalog(feed: .updated)
-        return "������ \(baseURL.host ?? "Komiic")���ɹ���ȡ \(comics.count) ��������"
+        return "已连接 \(baseURL.host ?? "Komiic")，成功读取 \(comics.count) 部漫画。"
     }
 
     private func ticketRequest(kid: String, refreshing: Bool) async throws -> URLRequest {

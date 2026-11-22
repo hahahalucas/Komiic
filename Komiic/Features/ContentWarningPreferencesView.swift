@@ -8,23 +8,23 @@ struct ContentWarningPreferencesView: View {
     @State private var syncError: String?
 
     // These are the labels used by Komiic's first-party warning editor.
-    private let tags = ["Ѫ��", "�C��", "����", "�Ա���", "���茑", "�Ԛ�", "�ֲ�", "���H", "NTR", "BL", "�ٺ�"]
+    private let tags = ["血腥", "獵奇", "暴力", "性暴力", "性描寫", "自殺", "恐怖", "近親", "NTR", "BL", "百合"]
 
     var body: some View {
         Form {
             Section {
-                Text("ѡ��������Щ��ǩʱ������Ӧ�����ʾ�������ǩͬʱ����ʱ��������ȫ���أ����ģ����ʾ��")
+                Text("选择遇到这些标签时，漫画应如何显示。多个标签同时出现时，优先完全隐藏，其次模糊显示。")
                     .font(.subheadline).foregroundStyle(.secondary)
-                if loading { ProgressView("���ڶ�ȡ����ƫ�á�") }
+                if loading { ProgressView("正在读取官网偏好…") }
                 if let syncError {
                     Text(syncError).font(.caption).foregroundStyle(.secondary)
-                    Button("����ͬ��") { Task { await loadOfficialPreferences() } }
+                    Button("重试同步") { Task { await loadOfficialPreferences() } }
                 }
             } footer: {
-                Text(connected ? "ƫ�ûᱣ���ڱ�������ͬ���� Komiic ������" : "ƫ�ñ����ڱ�������¼ Komiic ���ͬ������ƫ�á�")
+                Text(connected ? "偏好会保存在本机，并同步到 Komiic 官网。" : "偏好保存在本机。登录 Komiic 后可同步官网偏好。")
             }
 
-            Section("���ݱ�ǩ") {
+            Section("内容标签") {
                 ForEach(tags, id: \.self) { tag in
                     VStack(alignment: .leading, spacing: 10) {
                         HStack {
@@ -36,9 +36,9 @@ struct ContentWarningPreferencesView: View {
                             get: { settings.warningAction(for: tag) },
                             set: { action in update(tag: tag, action: action) }
                         )) {
-                            Text("��ʾ").tag(ContentWarningAction.show)
-                            Text("ģ����ʾ").tag(ContentWarningAction.warn)
-                            Text("��ȫ����").tag(ContentWarningAction.hide)
+                            Text("显示").tag(ContentWarningAction.show)
+                            Text("模糊显示").tag(ContentWarningAction.warn)
+                            Text("完全隐藏").tag(ContentWarningAction.hide)
                         }
                         .pickerStyle(.segmented)
                         .disabled(loading || savingTag != nil)
@@ -47,17 +47,17 @@ struct ContentWarningPreferencesView: View {
                 }
             }
         }
-        .navigationTitle("���ݾ���ƫ��")
+        .navigationTitle("内容警告偏好")
         .navigationBarTitleDisplayMode(.inline)
         .task(id: settings.contentMode) { await loadOfficialPreferences() }
     }
 
     private func displayName(_ tag: String) -> String {
         switch tag {
-        case "�C��": return "����"
-        case "���茑": return "����д"
-        case "�Ԛ�": return "��ɱ"
-        case "���H": return "����"
+        case "獵奇": return "猎奇"
+        case "性描寫": return "性描写"
+        case "自殺": return "自杀"
+        case "近親": return "近亲"
         default: return tag
         }
     }

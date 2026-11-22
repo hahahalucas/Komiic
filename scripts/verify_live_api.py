@@ -25,7 +25,7 @@ for mode, origin in [('REGULAR','https://komiic.cc'), ('H_MANGA','https://h.komi
         checks.append(item)
         print(json.dumps(item,ensure_ascii=True))
 checked_date = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8))).date().isoformat()
-out = dict(checkedDate=checked_date, source='https://komiic.cc/assets/index-Qe6s1nt9.js', modeSelection='Official h. origin plus explicit adult/contentType for recommendations', checks=checks, officialWarningTags=['Ѫ��','�C��','����','�Ա���','���茑','�Ԛ�','�ֲ�','���H','NTR','BL','�ٺ�'], warningActions=dict(show=None,blur='WARN',hide='HIDE'), authenticationLimit='Authenticated mutations/profile collections inferred from first-party script; no user credentials were supplied. No quota bypass or simulated profile data.')
+out = dict(checkedDate=checked_date, source='https://komiic.cc/assets/index-Qe6s1nt9.js', modeSelection='Official h. origin plus explicit adult/contentType for recommendations', checks=checks, officialWarningTags=['血腥','獵奇','暴力','性暴力','性描寫','自殺','恐怖','近親','NTR','BL','百合'], warningActions=dict(show=None,blur='WARN',hide='HIDE'), authenticationLimit='Authenticated mutations/profile collections inferred from first-party script; no user credentials were supplied. No quota bypass or simulated profile data.')
 report = Path(__file__).resolve().parents[1] / 'docs/v0.4.0-api.json'
 with report.open('w',encoding='utf-8') as f:
     json.dump(out,f,ensure_ascii=False,indent=2)

@@ -13,17 +13,17 @@ struct SearchPromptView: View {
         ZStack {
             Color.black.opacity(0.42).ignoresSafeArea()
                 .onTapGesture(perform: onCancel)
-                .accessibilityLabel("�ر�����")
+                .accessibilityLabel("关闭搜索")
                 .accessibilityAddTraits(.isButton)
             VStack(alignment: .leading, spacing: 28) {
                 HStack {
-                    Text("����").font(.title2.bold())
+                    Text("搜索").font(.title2.bold())
                     Spacer()
                     Button(action: onCancel) { Image(systemName: "xmark").font(.body) }
-                        .foregroundStyle(.secondary).accessibilityLabel("�ر�����")
+                        .foregroundStyle(.secondary).accessibilityLabel("关闭搜索")
                 }
                 VStack(spacing: 10) {
-                    TextField("��������������", text: $keyword)
+                    TextField("搜索漫画和作者", text: $keyword)
                         .font(.body).focused($focused)
                         .submitLabel(.search).onSubmit(submit)
                         .autocorrectionDisabled()
@@ -32,7 +32,7 @@ struct SearchPromptView: View {
                 }
                 HStack {
                     Spacer()
-                    Button("����", action: submit).font(.headline)
+                    Button("搜索", action: submit).font(.headline)
                         .disabled(query.isEmpty).padding(.vertical, 6)
                 }
             }

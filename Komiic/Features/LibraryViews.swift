@@ -26,12 +26,12 @@ struct FavoritesView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                SectionHeading(title: "�ҵ�ϲ��", subtitle: "\(library.favorites.count) ������")
-                Picker("�Ķ�״̬", selection: $selected) {
-                    Text("ȫ��").tag(0); Text("δ��").tag(1); Text("�ڶ�").tag(2); Text("�����Ѷ�").tag(3)
+                SectionHeading(title: "我的喜爱", subtitle: "\(library.favorites.count) 部漫画")
+                Picker("阅读状态", selection: $selected) {
+                    Text("全部").tag(0); Text("未读").tag(1); Text("在读").tag(2); Text("本章已读").tag(3)
                 }.pickerStyle(.segmented)
                 if comics.isEmpty {
-                    EmptyState(symbol: "heart", title: "�ղ�ϲ���Ĺ���", message: "��������������㰮�ģ������������ҵ���")
+                    EmptyState(symbol: "heart", title: "收藏喜欢的故事", message: "在漫画详情中轻点爱心，即可在这里找到。")
                 } else {
                     ComicGrid(comics: comics)
                 }
@@ -48,9 +48,9 @@ struct BookmarksView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                SectionHeading(title: "�Ķ���ǩ", subtitle: "\(library.bookmarks.count) ��λ��")
+                SectionHeading(title: "阅读书签", subtitle: "\(library.bookmarks.count) 个位置")
                 if library.bookmarks.isEmpty {
-                    EmptyState(symbol: "bookmark", title: "��ס���ٿ�����һҳ", message: "�Ķ�ʱ�����ǩ��ť�����浱ǰҳ��")
+                    EmptyState(symbol: "bookmark", title: "留住想再看的那一页", message: "阅读时轻点书签按钮，保存当前页。")
                 }
                 ForEach(library.bookmarks.filter { !settings.shouldHide($0.comic) && !library.isBlocked($0.comic) }) { bookmark in
                     Button { launch = ReaderLaunch(comic: bookmark.comic, chapter: bookmark.chapter, page: bookmark.page) } label: {
@@ -58,7 +58,7 @@ struct BookmarksView: View {
                             ComicCover(comic: bookmark.comic).frame(width: 58, height: 80).clipShape(RoundedRectangle(cornerRadius: 8))
                             VStack(alignment: .leading, spacing: 6) {
                                 Text(bookmark.comic.title).font(.subheadline.bold()).lineLimit(2)
-                                Text("\(bookmark.chapter.displayTitle) �� �� \(bookmark.page + 1) ҳ")
+                                Text("\(bookmark.chapter.displayTitle) · 第 \(bookmark.page + 1) 页")
                                     .font(.caption).foregroundStyle(.secondary)
                                 Text(bookmark.date, style: .date).font(.caption2).foregroundStyle(.tertiary)
                             }
@@ -67,7 +67,7 @@ struct BookmarksView: View {
                         }.padding(13).komiicCard()
                     }.buttonStyle(.plain)
                     .contextMenu {
-                        Button("ɾ����ǩ", role: .destructive) { library.removeBookmark(id: bookmark.id) }
+                        Button("删除书签", role: .destructive) { library.removeBookmark(id: bookmark.id) }
                     }
                 }
             }.padding(16)
@@ -85,15 +85,15 @@ struct ShelvesView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 HStack {
-                    SectionHeading(title: "�ҵ����", subtitle: "\(library.shelves.count) ��")
+                    SectionHeading(title: "我的书柜", subtitle: "\(library.shelves.count) 个")
                     Button { name = ""; creating = true } label: { Image(systemName: "plus.circle.fill").font(.title2) }
-                        .accessibilityLabel("�������")
+                        .accessibilityLabel("创建书柜")
                 }
-                Text("��ϲ�����������������Լ���СС�鷿��")
+                Text("把喜欢的漫画，整理成自己的小小书房。")
                     .font(.subheadline).foregroundStyle(.secondary)
                 if library.shelves.isEmpty {
-                    EmptyState(symbol: "books.vertical", title: "������һ�����", message: "����ġ�������Ķ��ƻ�����������",
-                               actionTitle: "�������", action: { name = ""; creating = true })
+                    EmptyState(symbol: "books.vertical", title: "创建第一个书柜", message: "按题材、心情或阅读计划整理漫画。",
+                               actionTitle: "创建书柜", action: { name = ""; creating = true })
                 }
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 155), spacing: 14)], spacing: 18) {
                     ForEach(library.shelves) { shelf in
@@ -110,18 +110,18 @@ struct ShelvesView: View {
                                     }
                                 }.clipShape(RoundedRectangle(cornerRadius: 9))
                                 Text(shelf.name).font(.headline).lineLimit(1)
-                                Text("\(shelf.comics.count) ������").font(.caption).foregroundStyle(.secondary)
+                                Text("\(shelf.comics.count) 本漫画").font(.caption).foregroundStyle(.secondary)
                             }.padding(12).komiicCard()
                         }.buttonStyle(.plain)
                     }
                 }
             }.padding(16)
         }
-        .alert("�������", isPresented: $creating) {
-            TextField("�������", text: $name)
-            Button("ȡ��", role: .cancel) {}
-            Button("����") { library.createShelf(name: name) }
-        } message: { Text("��������ȡһ�����֡�") }
+        .alert("创建书柜", isPresented: $creating) {
+            TextField("书柜名称", text: $name)
+            Button("取消", role: .cancel) {}
+            Button("创建") { library.createShelf(name: name) }
+        } message: { Text("给这个书柜取一个名字。") }
     }
 }
 
@@ -139,13 +139,13 @@ private struct ShelfDetailView: View {
         ScrollView {
             if let shelf {
                 if shelf.comics.isEmpty {
-                    EmptyState(symbol: "books.vertical", title: "��񻹿���", message: "������������ѡ�񡸼�����񡹣���ʼ�ռ���")
+                    EmptyState(symbol: "books.vertical", title: "书柜还空着", message: "在漫画详情中选择「加入书柜」，开始收集。")
                 } else {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 105, maximum: 170), spacing: 10)], spacing: 16) {
                         ForEach(shelf.comics.filter { !settings.shouldHide($0) && !library.isBlocked($0) }) { comic in
                             NavigationLink(value: comic) { ComicCard(comic: comic) }.buttonStyle(.plain)
                                 .contextMenu {
-                                    Button("�Ƴ����", role: .destructive) { library.removeFromShelf(comicID: comic.id, shelfID: shelfID) }
+                                    Button("移出书柜", role: .destructive) { library.removeFromShelf(comicID: comic.id, shelfID: shelfID) }
                                 }
                         }
                     }.padding(14)
@@ -153,20 +153,20 @@ private struct ShelfDetailView: View {
             }
         }
         .background(KomiicTheme.canvas)
-        .navigationTitle(shelf?.name ?? "���")
+        .navigationTitle(shelf?.name ?? "书柜")
         .toolbar {
             Menu {
-                Button("������", systemImage: "pencil") { name = shelf?.name ?? ""; rename = true }
-                Button("ɾ�����", systemImage: "trash", role: .destructive) { deletion = true }
+                Button("重命名", systemImage: "pencil") { name = shelf?.name ?? ""; rename = true }
+                Button("删除书柜", systemImage: "trash", role: .destructive) { deletion = true }
             } label: { Image(systemName: "ellipsis.circle") }
         }
-        .alert("���������", isPresented: $rename) {
-            TextField("����", text: $name)
-            Button("ȡ��", role: .cancel) {}
-            Button("����") { library.renameShelf(id: shelfID, name: name) }
+        .alert("重命名书柜", isPresented: $rename) {
+            TextField("名称", text: $name)
+            Button("取消", role: .cancel) {}
+            Button("保存") { library.renameShelf(id: shelfID, name: name) }
         }
-        .confirmationDialog("ɾ�������������������ļ��ᱣ����", isPresented: $deletion, titleVisibility: .visible) {
-            Button("ɾ�����", role: .destructive) { library.deleteShelf(id: shelfID); dismiss() }
+        .confirmationDialog("删除这个书柜？漫画和下载文件会保留。", isPresented: $deletion, titleVisibility: .visible) {
+            Button("删除书柜", role: .destructive) { library.deleteShelf(id: shelfID); dismiss() }
         }
     }
 }
@@ -179,7 +179,7 @@ struct HistoryView: View {
         ScrollView {
             LazyVStack(spacing: 14) {
                 if library.history.isEmpty {
-                    EmptyState(symbol: "clock.arrow.circlepath", title: "���£����������", message: "�Ķ�������������Զ���¼��Ľ��ȡ�")
+                    EmptyState(symbol: "clock.arrow.circlepath", title: "故事，从这里继续", message: "阅读漫画后，这里会自动记录你的进度。")
                 }
                 ForEach(library.history.filter { !settings.shouldHide($0.comic) && !library.isBlocked($0.comic) }) { progress in
                     Button { launch = ReaderLaunch(comic: progress.comic, chapter: progress.chapter, page: progress.page) } label: {
@@ -189,8 +189,8 @@ struct HistoryView: View {
                             VStack(alignment: .leading, spacing: 8) {
                                 Text(progress.comic.title).font(.subheadline.bold()).lineLimit(2)
                                 Text(progress.totalPages > 0
-                                     ? "\(progress.chapter.displayTitle) �� \(progress.page + 1)/\(progress.totalPages) ҳ"
-                                     : "\(progress.chapter.displayTitle) �� �� \(progress.page + 1) ҳ")
+                                     ? "\(progress.chapter.displayTitle) · \(progress.page + 1)/\(progress.totalPages) 页"
+                                     : "\(progress.chapter.displayTitle) · 第 \(progress.page + 1) 页")
                                     .font(.caption).foregroundStyle(.secondary)
                                 if progress.totalPages > 0 { ProgressView(value: progress.fraction).tint(KomiicTheme.accent) }
                                 Text(progress.date, style: .relative).font(.caption2).foregroundStyle(.secondary)
@@ -209,6 +209,6 @@ struct HistoryView: View {
 extension Chapter {
     var displayTitle: String {
         if !title.isEmpty { return title }
-        return type.uppercased() == "BOOK" ? "�� \(serial) ��" : "�� \(serial) ��"
+        return type.uppercased() == "BOOK" ? "第 \(serial) 卷" : "第 \(serial) 话"
     }
 }

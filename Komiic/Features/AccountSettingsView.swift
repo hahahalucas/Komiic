@@ -26,11 +26,11 @@ struct AccountView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 profileHeader
-                if loading { ProgressView("���ڶ�ȡ�˺����ϡ�").frame(maxWidth: .infinity) }
+                if loading { ProgressView("正在读取账号资料…").frame(maxWidth: .infinity) }
                 if let error {
                     VStack(alignment: .leading, spacing: 10) {
                         Text(error).font(.caption).foregroundStyle(.secondary)
-                        Button("���¶�ȡ") { Task { await loadProfile() } }.font(.subheadline)
+                        Button("重新读取") { Task { await loadProfile() } }.font(.subheadline)
                     }
                     .padding(16).frame(maxWidth: .infinity, alignment: .leading).komiicCard()
                 }
@@ -38,8 +38,8 @@ struct AccountView: View {
                     officialStats(profile)
                     if !profile.topCategories.isEmpty { categorySummary(profile.topCategories) }
                     collectionLinks(profile)
-                    Button { openWebsite("/settings", title: "�˺�����") } label: {
-                        Text("��������˺���Ϣ���뵽 Komiic �����趨���в�����")
+                    Button { openWebsite("/settings", title: "账号资料") } label: {
+                        Text("如需更改账号信息，请到 Komiic 官网设定进行操作。")
                             .font(.caption).multilineTextAlignment(.center)
                             .frame(maxWidth: .infinity).padding(.vertical, 8)
                     }
@@ -48,7 +48,7 @@ struct AccountView: View {
                 }
                 if connected {
                     Button(role: .destructive) { signingOut = true } label: {
-                        Label("�˳���¼", systemImage: "rectangle.portrait.and.arrow.right")
+                        Label("退出登录", systemImage: "rectangle.portrait.and.arrow.right")
                             .font(.subheadline.weight(.semibold))
                             .frame(maxWidth: .infinity, minHeight: 44)
                     }
@@ -59,7 +59,7 @@ struct AccountView: View {
             .padding(18).frame(maxWidth: 760).frame(maxWidth: .infinity)
         }
         .background(KomiicTheme.canvas)
-        .navigationTitle("�˺�").navigationBarTitleDisplayMode(.inline)
+        .navigationTitle("账号").navigationBarTitleDisplayMode(.inline)
         .refreshable { await loadProfile() }
         .task(id: settings.contentMode) { await loadProfile() }
         .sheet(item: $website) { destination in
@@ -67,8 +67,8 @@ struct AccountView: View {
                 Task { await loadProfile() }
             })
         }
-        .confirmationDialog("�˳��� App �е� Komiic �����Ự�������Ķ����ϻᱣ����", isPresented: $signingOut, titleVisibility: .visible) {
-            Button("�˳���¼", role: .destructive) {
+        .confirmationDialog("退出此 App 中的 Komiic 官网会话？本机阅读资料会保留。", isPresented: $signingOut, titleVisibility: .visible) {
+            Button("退出登录", role: .destructive) {
                 requestID = UUID()
                 profile = nil
                 connected = false
@@ -96,16 +96,16 @@ struct AccountView: View {
             }
             .frame(width: 76, height: 76).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 6) {
-                Text(profile?.username ?? (connected ? "Komiic �˺�" : "��ӭ���� Komiic"))
+                Text(profile?.username ?? (connected ? "Komiic 账号" : "欢迎来到 Komiic"))
                     .font(.title2.bold()).lineLimit(2)
                 if let profile {
                     Text(profile.email).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
-                    Text("������ \(String(profile.dateCreated.prefix(10)))").font(.caption).foregroundStyle(.secondary)
+                    Text("加入于 \(String(profile.dateCreated.prefix(10)))").font(.caption).foregroundStyle(.secondary)
                 } else {
-                    Text(connected ? "���������¶�ȡ��������" : "��¼��鿴�˺����Ϻ��Ķ�ͳ��")
+                    Text(connected ? "下拉可重新读取官网资料" : "登录后查看账号资料和阅读统计")
                         .font(.caption).foregroundStyle(.secondary)
-                    Button(connected ? "�򿪹����˺�" : "��¼ Komiic") {
-                        openWebsite(connected ? "/profile" : "/login", title: "Komiic �˺�")
+                    Button(connected ? "打开官网账号" : "登录 Komiic") {
+                        openWebsite(connected ? "/profile" : "/login", title: "Komiic 账号")
                     }.font(.subheadline.bold())
                 }
             }
@@ -117,14 +117,14 @@ struct AccountView: View {
 
     private func officialStats(_ profile: KomiicAccountProfile) -> some View {
         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], alignment: .leading, spacing: 14) {
-            stat("�����Ѷ�", value: String(profile.readComicCount), symbol: "book.fill")
-            stat("�½��Ѷ�", value: String(profile.readChapterCount), symbol: "book.pages")
+            stat("漫画已读", value: String(profile.readComicCount), symbol: "book.fill")
+            stat("章节已读", value: String(profile.readChapterCount), symbol: "book.pages")
             VStack(alignment: .leading, spacing: 12) {
                 Image(systemName: "photo").font(.title3).foregroundStyle(KomiicTheme.accent)
                 Text("\(profile.imageReadCount)/\(profile.imageReadLimit)")
                     .font(.system(size: 27, weight: .bold, design: .rounded))
                     .lineLimit(1).minimumScaleFactor(0.6)
-                Text("ͼƬ��ȡ").font(.caption).foregroundStyle(.secondary)
+                Text("图片读取").font(.caption).foregroundStyle(.secondary)
                 ProgressView(value: min(1, max(0, Double(profile.imageReadCount) / Double(max(1, profile.imageReadLimit)))))
                 TimelineView(.periodic(from: .now, by: 60)) { context in
                     Text(resetDescription(at: profile.resetAt, now: context.date)).font(.caption2).foregroundStyle(.secondary)
@@ -134,7 +134,7 @@ struct AccountView: View {
             VStack(alignment: .leading, spacing: 12) {
                 Image(systemName: "bubble.left").font(.title3).foregroundStyle(KomiicTheme.accent)
                 Text(String(profile.commentCount)).font(.system(size: 30, weight: .bold, design: .rounded))
-                Text("����").font(.caption).foregroundStyle(.secondary)
+                Text("留言").font(.caption).foregroundStyle(.secondary)
                 Label(String(profile.commentLikes), systemImage: "hand.thumbsup").font(.caption).foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).padding(18).komiicCard()
@@ -152,7 +152,7 @@ struct AccountView: View {
 
     private func categorySummary(_ categories: [ProfileCategoryCount]) -> some View {
         VStack(alignment: .leading, spacing: 16) {
-            Label("��Ķ�����", systemImage: "square.grid.2x2").font(.headline)
+            Label("最常阅读分类", systemImage: "square.grid.2x2").font(.headline)
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 95), spacing: 8)], alignment: .leading, spacing: 8) {
                 ForEach(Array(categories.prefix(5))) { category in
                     HStack(spacing: 6) {
@@ -169,13 +169,13 @@ struct AccountView: View {
 
     private func collectionLinks(_ profile: KomiicAccountProfile) -> some View {
         HStack(spacing: 9) {
-            collectionButton("�ղ�", value: profile.favoriteCount, symbol: "heart.fill") {
+            collectionButton("收藏", value: profile.favoriteCount, symbol: "heart.fill") {
                 if let onOpenFavorites { onOpenFavorites() }
-                else { openWebsite("/favorite", title: "�����ղ�") }
+                else { openWebsite("/favorite", title: "官网收藏") }
             }
-            collectionButton("��ǩ", value: profile.bookmarkCount, symbol: "bookmark.fill") { openWebsite("/bookmarks", title: "������ǩ") }
-            collectionButton("���", value: profile.folderCount, symbol: "folder.fill") { openWebsite("/folder", title: "�������") }
-            collectionButton("׷�����", value: profile.followedFolderCount, symbol: "bookmark") { openWebsite("/folder?tab=followed", title: "׷�����") }
+            collectionButton("书签", value: profile.bookmarkCount, symbol: "bookmark.fill") { openWebsite("/bookmarks", title: "官网书签") }
+            collectionButton("书柜", value: profile.folderCount, symbol: "folder.fill") { openWebsite("/folder", title: "官网书柜") }
+            collectionButton("追踪书柜", value: profile.followedFolderCount, symbol: "bookmark") { openWebsite("/folder?tab=followed", title: "追踪书柜") }
         }
     }
 
@@ -192,15 +192,15 @@ struct AccountView: View {
 
     private var localSummary: some View {
         VStack(alignment: .leading, spacing: 14) {
-            SectionHeading(title: "�����Ķ�", subtitle: settings.contentMode.title)
+            SectionHeading(title: "本机阅读", subtitle: settings.contentMode.title)
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 14) {
-                stat("�����Ѷ�", value: String(library.readComicCount), symbol: "book.fill")
-                stat("�½��Ѷ�", value: String(library.readChapterCount), symbol: "book.pages")
+                stat("漫画已读", value: String(library.readComicCount), symbol: "book.fill")
+                stat("章节已读", value: String(library.readChapterCount), symbol: "book.pages")
             }
             HStack(spacing: 10) {
-                collectionButton("�ղ�", value: library.favorites.count, symbol: "heart.fill") { onOpenFavorites?() }
-                collectionButton("��ǩ", value: library.bookmarks.count, symbol: "bookmark.fill") { onOpenBookmarks?() }
-                collectionButton("���", value: library.shelves.count, symbol: "folder.fill") { onOpenShelves?() }
+                collectionButton("收藏", value: library.favorites.count, symbol: "heart.fill") { onOpenFavorites?() }
+                collectionButton("书签", value: library.bookmarks.count, symbol: "bookmark.fill") { onOpenBookmarks?() }
+                collectionButton("书柜", value: library.shelves.count, symbol: "folder.fill") { onOpenShelves?() }
             }
         }
     }
@@ -244,9 +244,9 @@ struct AccountView: View {
 
     private func resetDescription(at date: Date, now: Date) -> String {
         let minutes = max(0, Int(date.timeIntervalSince(now) / 60))
-        if minutes == 0 { return "��ȼ�������" }
+        if minutes == 0 { return "额度即将重置" }
         let hours = minutes / 60
-        return hours > 0 ? "\(hours) Сʱ \(minutes % 60) ���Ӻ�����" : "\(minutes) ���Ӻ�����"
+        return hours > 0 ? "\(hours) 小时 \(minutes % 60) 分钟后重置" : "\(minutes) 分钟后重置"
     }
 }
 
@@ -257,8 +257,8 @@ struct BlockedComicsView: View {
     var body: some View {
         List {
             if library.blockedComicIDs.isEmpty {
-                ContentUnavailableView("û�����ε�����", systemImage: "eye.slash",
-                                       description: Text("���ε���������ʾ�����������ʱ�����"))
+                ContentUnavailableView("没有屏蔽的漫画", systemImage: "eye.slash",
+                                       description: Text("屏蔽的漫画会显示在这里，可以随时解除。"))
                     .listRowBackground(Color.clear)
             }
             ForEach(library.blockedComicIDs.sorted(), id: \.self) { id in
@@ -272,22 +272,22 @@ struct BlockedComicsView: View {
                         Image(systemName: "book.closed").foregroundStyle(.secondary)
                             .frame(width: 48, height: 66)
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("���� #\(id)").font(.subheadline)
+                            Text("漫画 #\(id)").font(.subheadline)
                             if loadErrors.contains(id) {
-                                Text("��ʱ�޷�ȡ����������").font(.caption).foregroundStyle(.secondary)
+                                Text("暂时无法取得漫画资料").font(.caption).foregroundStyle(.secondary)
                             } else {
                                 ProgressView().controlSize(.small)
                             }
                         }
                     }
                     Spacer(minLength: 8)
-                    Button("�������") { library.unblock(comicID: id) }
+                    Button("解除屏蔽") { library.unblock(comicID: id) }
                         .font(.caption).buttonStyle(.bordered)
                 }
                 .padding(.vertical, 4)
             }
         }
-        .navigationTitle("��������").navigationBarTitleDisplayMode(.inline)
+        .navigationTitle("屏蔽漫画").navigationBarTitleDisplayMode(.inline)
         .task(id: library.activeMode) { await loadMissingMetadata() }
     }
 

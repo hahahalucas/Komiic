@@ -5,10 +5,10 @@ enum CatalogFeed: String, CaseIterable, Identifiable, Sendable {
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .updated: return "���¸���"
-        case .newest: return "����ϼ�"
-        case .popular: return "��������"
-        case .recommended: return "�Ƽ�����"
+        case .updated: return "最新更新"
+        case .newest: return "最近上架"
+        case .popular: return "当月最热"
+        case .recommended: return "推荐漫画"
         }
     }
 }
@@ -19,13 +19,13 @@ enum ContentFilter: Int, CaseIterable, Identifiable, Codable, Sendable {
     var id: Int { rawValue }
     var title: String {
         switch self {
-        case .all: return "ȫ��"
-        case .general: return "��"
-        case .suggestive: return "1 ��"
-        case .levelTwo: return "2 ��"
-        case .levelThree: return "3 ��"
-        case .levelFour: return "4 ��������"
-        case .explicit: return "5 ��"
+        case .all: return "全部"
+        case .general: return "无"
+        case .suggestive: return "1 级"
+        case .levelTwo: return "2 级"
+        case .levelThree: return "3 级"
+        case .levelFour: return "4 级及以上"
+        case .explicit: return "5 级"
         }
     }
 }
@@ -138,9 +138,9 @@ struct Chapter: Codable, Hashable, Identifiable, Sendable {
 
     private static func makeTitle(serial: String, type: String) -> String {
         switch type {
-        case "book": return "�� \(serial) ��"
-        case "short": return serial.isEmpty ? "��ƪ" : "��ƪ \(serial)"
-        default: return "�� \(serial) ��"
+        case "book": return "第 \(serial) 卷"
+        case "short": return serial.isEmpty ? "短篇" : "短篇 \(serial)"
+        default: return "第 \(serial) 话"
         }
     }
 }

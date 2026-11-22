@@ -2,16 +2,16 @@ import SwiftUI
 
 extension Comic {
     var displayStatus: String {
-        if status.uppercased() == "SHORT" { return "��ƪ" }
-        return ["END", "COMPLETED", "FINISHED", "���", "��Y"].contains(status.uppercased()) ? "���" : "����"
+        if status.uppercased() == "SHORT" { return "短篇" }
+        return ["END", "COMPLETED", "FINISHED", "完结", "完結"].contains(status.uppercased()) ? "完结" : "连载"
     }
     var chapterSummary: String {
-        let parts = [lastChapterUpdate.flatMap { $0.isEmpty ? nil : "\($0) ��" },
-                     lastBookUpdate.flatMap { $0.isEmpty ? nil : "\($0) ��" }].compactMap { $0 }
-        return parts.isEmpty ? "�鿴�½�" : parts.joined(separator: " �� ")
+        let parts = [lastChapterUpdate.flatMap { $0.isEmpty ? nil : "\($0) 话" },
+                     lastBookUpdate.flatMap { $0.isEmpty ? nil : "\($0) 卷" }].compactMap { $0 }
+        return parts.isEmpty ? "查看章节" : parts.joined(separator: " · ")
     }
     var updatedSummary: String {
-        guard let dateUpdated else { return "�������" }
+        guard let dateUpdated else { return "最近更新" }
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         let date = formatter.date(from: dateUpdated) ?? ISO8601DateFormatter().date(from: dateUpdated)
@@ -21,8 +21,8 @@ extension Comic {
 }
 
 func compactCount(_ count: Int) -> String {
-    if count >= 10_000 { return String(format: "%.1f��", Double(count) / 10_000) }
-    if count >= 1_000 { return String(format: "%.1fǧ", Double(count) / 1_000) }
+    if count >= 10_000 { return String(format: "%.1f万", Double(count) / 10_000) }
+    if count >= 1_000 { return String(format: "%.1f千", Double(count) / 1_000) }
     return String(count)
 }
 
@@ -108,7 +108,7 @@ struct ComicCover: View {
                 if settings.shouldBlur(comic) || settings.shouldHide(comic) {
                     VStack(spacing: 7) {
                         Image(systemName: "eye.slash.fill")
-                        Text("���ݾ���").font(.caption2)
+                        Text("内容警告").font(.caption2)
                     }
                     .foregroundStyle(.primary).padding(12)
                     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
@@ -123,17 +123,17 @@ struct ComicContextMenu: View {
     @EnvironmentObject private var library: LibraryStore
     var body: some View {
         Button { library.toggleFavorite(comic) } label: {
-            Label(library.isFavorite(comic) ? "ȡ��ϲ��" : "����ϲ��", systemImage: "heart")
+            Label(library.isFavorite(comic) ? "取消喜爱" : "加入喜爱", systemImage: "heart")
         }
         if !library.shelves.isEmpty {
-            Menu("�������") {
+            Menu("加入书柜") {
                 ForEach(library.shelves) { shelf in
                     Button(shelf.name) { library.addToShelf(comic, shelfID: shelf.id) }
                 }
             }
         }
         Button(role: .destructive) { library.toggleBlocked(comic) } label: {
-            Label("�����ⲿ����", systemImage: "eye.slash")
+            Label("屏蔽这部漫画", systemImage: "eye.slash")
         }
     }
 }

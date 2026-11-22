@@ -148,13 +148,13 @@ final class LibraryStore: ObservableObject {
                 let backup = directory.appendingPathComponent("library-recovery-\(UUID().uuidString).json")
                 do {
                     try fileManager.copyItem(at: fileURL, to: backup)
-                    lastError = "�������ݶ�ȡʧ�ܣ�ԭ�ļ��ѱ���Ϊ \(backup.lastPathComponent)��\(error.localizedDescription)"
+                    lastError = "本机数据读取失败，原文件已保留为 \(backup.lastPathComponent)。\(error.localizedDescription)"
                 } catch {
                     canPersist = false
-                    lastError = "�������ݶ�ȡʧ�ܣ�ԭ�ļ����ڡ����ȱ��ݺ���������ݡ�\(error.localizedDescription)"
+                    lastError = "本机数据读取失败，原文件仍在。请先备份后再清除数据。\(error.localizedDescription)"
                 }
             } else {
-                lastError = "�޷������������Ͽ⣺\(error.localizedDescription)"
+                lastError = "无法建立本机资料库：\(error.localizedDescription)"
             }
         }
     }
@@ -488,7 +488,7 @@ final class LibraryStore: ObservableObject {
     }
 
     private func reportOfficialError(_ error: Error) {
-        let message = "����ϲ�����Ķ���¼ͬ��δ��ɣ��ѱ����������ϣ��´�ˢ�»����ԡ�\(error.localizedDescription)"
+        let message = "官网喜爱与阅读记录同步未完成，已保留本机资料；下次刷新会重试。\(error.localizedDescription)"
         if officialSyncError != message { lastError = message }
         officialSyncError = message
     }
@@ -496,11 +496,11 @@ final class LibraryStore: ObservableObject {
     private func validShelfName(_ proposed: String, excluding id: UUID? = nil) -> String? {
         let name = proposed.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty, name.count <= 80 else {
-            lastError = "���������Ҫ 1 �� 80 ���֡�"
+            lastError = "书柜名称需要 1 至 80 个字。"
             return nil
         }
         guard !shelves.contains(where: { $0.id != id && $0.name.localizedCaseInsensitiveCompare(name) == .orderedSame }) else {
-            lastError = "����ͬ������뻻һ�����ơ�"
+            lastError = "已有同名书柜，请换一个名称。"
             return nil
         }
         return name
@@ -553,7 +553,7 @@ final class LibraryStore: ObservableObject {
 
     private func persist() {
         guard canPersist else {
-            lastError = "Ϊ�����޷���ȡ��ԭʼ���ϣ���δ������ġ��뱸�ݺ�������������������ϡ�"
+            lastError = "为保留无法读取的原始资料，暂未保存更改。请备份后在设置中清除本机资料。"
             return
         }
         do {
@@ -563,7 +563,7 @@ final class LibraryStore: ObservableObject {
             encoder.outputFormatting = [.sortedKeys]
             try encoder.encode(archive).write(to: fileURL, options: .atomic)
         } catch {
-            lastError = "����������δ���棺\(error.localizedDescription)"
+            lastError = "本机数据尚未保存：\(error.localizedDescription)"
         }
     }
 }

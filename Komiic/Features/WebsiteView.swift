@@ -3,7 +3,7 @@ import WebKit
 
 struct WebsiteView: View {
     let url: URL
-    var title = "Komiic ����"
+    var title = "Komiic 官网"
     var onClose: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var loading = true
@@ -20,18 +20,18 @@ struct WebsiteView: View {
                 }
                 if loading { ProgressView().padding(10).background(.regularMaterial, in: Capsule()) }
                 if let errorMessage {
-                    EmptyState(symbol: "wifi.exclamationmark", title: "��ҳδ������", message: errorMessage,
-                               actionTitle: "����", action: { self.errorMessage = nil; reloadID = UUID() })
+                    EmptyState(symbol: "wifi.exclamationmark", title: "网页未能载入", message: errorMessage,
+                               actionTitle: "重试", action: { self.errorMessage = nil; reloadID = UUID() })
                     .background(KomiicTheme.canvas)
                 }
             }
             .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Link(destination: url) { Image(systemName: "safari") }.accessibilityLabel("��������д�")
+                    Link(destination: url) { Image(systemName: "safari") }.accessibilityLabel("在浏览器中打开")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("���") {
+                    Button("完成") {
                         Task {
                             await WebCookieBridge.synchronize(preferWeb: true)
                             onClose?()

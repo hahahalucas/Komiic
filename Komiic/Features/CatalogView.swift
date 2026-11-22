@@ -97,10 +97,10 @@ struct CatalogView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 6) {
-                PillButton(title: "�������", selected: page.isUpdates) { select(.updated) }
-                PillButton(title: "��������", selected: page == .popular) { select(.popular) }
-                PillButton(title: "�Ƽ�����", selected: page == .recommended) { select(.recommended) }
-                PillButton(title: "����Ķ�", selected: page == .history) { select(.history) }
+                PillButton(title: "最近更新", selected: page.isUpdates) { select(.updated) }
+                PillButton(title: "当月最热", selected: page == .popular) { select(.popular) }
+                PillButton(title: "推荐漫画", selected: page == .recommended) { select(.recommended) }
+                PillButton(title: "最近阅读", selected: page == .history) { select(.history) }
             }
             .komiicGlassGroup(spacing: 6)
             .padding(.horizontal, 12).padding(.vertical, 8)
@@ -133,14 +133,14 @@ struct CatalogView: View {
     private var pageControls: some View {
         HStack(spacing: 12) {
             if page.isUpdates {
-                Picker("���·�ʽ", selection: pageSelection) {
-                    Text("�������").tag(CatalogPage.updated)
-                    Text("����ϼ�").tag(CatalogPage.newest)
+                Picker("更新方式", selection: pageSelection) {
+                    Text("最近更新").tag(CatalogPage.updated)
+                    Text("最近上架").tag(CatalogPage.newest)
                 }
                 .pickerStyle(.segmented).frame(maxWidth: 230)
             } else {
-                Text(page == .popular ? "����£���Ҷ��ڿ�" :
-                     page == .recommended ? "������һ��������" : "���ϴζ����ĵط�����")
+                Text(page == .popular ? "这个月，大家都在看" :
+                     page == .recommended ? "发现下一部好漫画" : "从上次读到的地方继续")
                     .font(.subheadline).foregroundStyle(.secondary)
                     .lineLimit(1).minimumScaleFactor(0.8)
             }
@@ -151,7 +151,7 @@ struct CatalogView: View {
                         .font(.system(size: 19)).padding(9)
                 }
                 .komiicActionStyle()
-                .accessibilityLabel("ɸѡѡ��")
+                .accessibilityLabel("筛选选项")
             }
         }
         .frame(minHeight: 44)
@@ -189,15 +189,15 @@ private struct CatalogFeedPage: View {
             VStack(spacing: 18) {
                 ComicGrid(comics: visibleComics)
                 if let error = model.error {
-                    EmptyState(symbol: "wifi.exclamationmark", title: "������ʱ������", message: error,
-                               actionTitle: "��������", action: { Task { await reload() } })
+                    EmptyState(symbol: "wifi.exclamationmark", title: "连接暂时不可用", message: error,
+                               actionTitle: "重新连接", action: { Task { await reload() } })
                 } else if model.loading || model.loadedFilter == nil {
-                    ProgressView("��������������").font(.caption).padding(35)
+                    ProgressView("正在载入漫画…").font(.caption).padding(35)
                 } else if visibleComics.isEmpty {
-                    EmptyState(symbol: "books.vertical", title: "��������", message: "���Ե���ɸѡ�����Ժ�ˢ�¡�")
+                    EmptyState(symbol: "books.vertical", title: "暂无漫画", message: "尝试调整筛选，或稍后刷新。")
                 }
                 if model.hasMore, !model.loading, model.loadedFilter != nil, model.error == nil {
-                    Button("�������") { Task { await model.load(feed: feed, filter: filter, reset: false) } }
+                    Button("载入更多") { Task { await model.load(feed: feed, filter: filter, reset: false) } }
                         .buttonStyle(.bordered).padding(.bottom, 14)
                 }
             }
@@ -225,18 +225,18 @@ private struct FilterSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("���ݷּ�") {
-                    Picker("ɫ���̶�", selection: $draft) {
+                Section("内容分级") {
+                    Picker("色气程度", selection: $draft) {
                         ForEach(ContentFilter.allCases) { filter in
                             Text(filter.title).tag(filter)
                         }
                     }.pickerStyle(.menu)
                 }
             }
-            .navigationTitle("ɸѡѡ��").navigationBarTitleDisplayMode(.inline)
+            .navigationTitle("筛选选项").navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) { Button("����") { draft = .all } }
-                ToolbarItem(placement: .topBarTrailing) { Button("ȷ��") { selection = draft; dismiss() }.bold() }
+                ToolbarItem(placement: .topBarLeading) { Button("重置") { draft = .all } }
+                ToolbarItem(placement: .topBarTrailing) { Button("确定") { selection = draft; dismiss() }.bold() }
             }
         }
         .onAppear { draft = selection }
@@ -262,19 +262,19 @@ struct SearchView: View {
         ScrollView {
             if loading { ProgressView().padding(50) }
             if let error {
-                EmptyState(symbol: "wifi.exclamationmark", title: "����ʧ��", message: error)
+                EmptyState(symbol: "wifi.exclamationmark", title: "搜索失败", message: error)
             } else if keyword.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                EmptyState(symbol: "magnifyingglass", title: "��һ���뿴������", message: "���������������߻�ؼ��ʡ�")
+                EmptyState(symbol: "magnifyingglass", title: "找一本想看的漫画", message: "输入漫画名、作者或关键词。")
             } else if visibleComics.isEmpty && !loading {
-                EmptyState(symbol: "text.magnifyingglass", title: "û���ҵ��������", message: "��һ�����ƻ���̵Ĺؼ������ԡ�")
+                EmptyState(symbol: "text.magnifyingglass", title: "没有找到相关漫画", message: "换一个名称或更短的关键词试试。")
             } else {
                 ComicGrid(comics: visibleComics, onSelect: onSelect).padding(14)
             }
         }
         .background(KomiicTheme.canvas)
-        .navigationTitle("����")
+        .navigationTitle("搜索")
         .searchable(text: $keyword, isPresented: $searchPresented,
-                    placement: .navigationBarDrawer(displayMode: .always), prompt: "������ / ����")
+                    placement: .navigationBarDrawer(displayMode: .always), prompt: "漫画名 / 作者")
         .onAppear { searchPresented = true }
         .task(id: keyword) {
             comics = []; error = nil
