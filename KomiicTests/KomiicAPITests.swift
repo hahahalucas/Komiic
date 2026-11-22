@@ -20,44 +20,30 @@ final class KomiicAPITests: XCTestCase {
         XCTAssertEqual(shelves.first?.id, Bookshelf.official(id: "7", name: "另一个名称").id)
     }
 
-    func testBlockSyncUsesDeclaredSchemaAndNeverConfusesAccountBlocksWithComicBlocks() async throws {
+    func testOfficialBlockIDsSurviveMissingMetadataAndMutationsUseVerifiedOperations() async throws {
         let calls = LockedBox<[String]>([])
-        let id: [String: Any] = ["kind": "SCALAR", "name": "ID"]
-        let requiredID: [String: Any] = ["kind": "NON_NULL", "ofType": id]
-        let listID: [String: Any] = ["kind": "LIST", "ofType": id]
-        let boolean: [String: Any] = ["kind": "SCALAR", "name": "Boolean"]
-        let schema: [String: Any] = ["queryType": ["fields": [
-            ["name": "blockedAccountIds", "args": [], "type": listID],
-            ["name": "blockedComicIds", "args": [], "type": listID]
-        ]], "mutationType": ["fields": [
-            ["name": "blockComic", "args": [["name": "comicId", "type": requiredID]], "type": boolean],
-            ["name": "unblockComic", "args": [["name": "comicId", "type": requiredID]], "type": boolean]
-        ]]]
-        let schemaBytes = try JSONSerialization.data(withJSONObject: ["data": ["__schema": schema]])
         StubURLProtocol.handler = { request in
             let payload = try XCTUnwrap(try JSONSerialization.jsonObject(with: requestBody(request)) as? [String: Any])
-            let operation = payload["operationName"] as? String
-            if operation == "AppCollectionSchema" { return (200, "application/json", schemaBytes) }
-            if operation == "comicByIds" {
+            let operation = payload["operationName"] as? String ?? ""
+            calls.update { $0.append(operation) }
+            switch operation {
+            case "blockedComicIds":
+                return (200, "application/json", Data(#"{"data":{"blockedComicIds":["8","deleted"]}}"#.utf8))
+            case "comicByIds":
                 return (200, "application/json", Data(#"{"data":{"comics":[{"id":"8","title":"屏蔽漫画"}]}}"#.utf8))
+            default:
+                return (200, "application/json", Data("{\"data\":{\"\(operation)\":true}}".utf8))
             }
-            let query = payload["query"] as? String ?? ""
-            calls.update { $0.append(query) }
-            if query.contains("query AppCollectionOperation") {
-                XCTAssertTrue(query.contains("blockedComicIds"))
-                return (200, "application/json", Data(#"{"data":{"value":["8","deleted"]}}"#.utf8))
-            }
-            return (200, "application/json", Data(#"{"data":{"value":true}}"#.utf8))
         }
-        let testAPI = KomiicAPI(baseURL: URL(string: "https://collection-schema.invalid")!, session: session)
-        let blocks = try await testAPI.blockedCollection()
+        let blocks = try await api.blockedCollection()
         XCTAssertEqual(blocks.ids, ["8", "deleted"])
         XCTAssertEqual(blocks.comics.map(\.id), ["8"])
-        try await testAPI.setBlocked(comicID: "8", blocked: true)
-        try await testAPI.setBlocked(comicID: "8", blocked: false)
-        XCTAssertTrue(calls.value.contains { $0.contains("value: blockComic(") })
-        XCTAssertTrue(calls.value.contains { $0.contains("value: unblockComic(") })
+        try await api.setBlocked(comicID: "8", blocked: true)
+        try await api.setBlocked(comicID: "8", blocked: false)
+        try await api.renameBookshelf(id: "7", name: "新名字")
+        XCTAssertEqual(calls.value, ["blockedComicIds", "comicByIds", "blockComic", "unblockComic", "updateFolderName"])
     }
+
     private var session: URLSession!
     private var api: KomiicAPI!
 

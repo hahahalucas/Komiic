@@ -70,6 +70,7 @@ private struct AccountContentView: View {
         }
         .background(KomiicTheme.canvas)
         .navigationTitle("账号").navigationBarTitleDisplayMode(.inline)
+        .scrollBounceBehavior(.always, axes: .vertical)
         .refreshable { await loadProfile() }
         .task(id: settings.contentMode) { await loadProfile(force: false) }
         .sheet(item: $website) { destination in

@@ -1,0 +1,387 @@
+{
+  "checkedAt": "2026-11-22T16:08:36Z",
+  "sourceRun": "https://github.com/hahahalucas/Komiic/actions/runs/45042136274",
+  "modeContracts": [
+    {
+      "origin": "https://komiic.cc",
+      "queries": [
+        {
+          "name": "folders",
+          "result": "[Folder]!",
+          "args": [
+            "includeFollowed:Boolean",
+            "onlyFollowed:Boolean",
+            "contentType:ContentType"
+          ]
+        },
+        {
+          "name": "folder",
+          "result": "Folder!",
+          "args": [
+            "folderKey:String!"
+          ]
+        },
+        {
+          "name": "folderComicIds",
+          "result": "FolderComicIds!",
+          "args": [
+            "folderId:ID!",
+            "pagination:Pagination!"
+          ]
+        },
+        {
+          "name": "folderAllComicIds",
+          "result": "[ID!]!",
+          "args": [
+            "folderId:ID!"
+          ]
+        },
+        {
+          "name": "comicInAccountFolders",
+          "result": "[ID]!",
+          "args": [
+            "comicId:ID!"
+          ]
+        },
+        {
+          "name": "comicsInFolder",
+          "result": "[ComicInFolder]!",
+          "args": [
+            "comicIds:[ID!]!",
+            "folderId:ID!"
+          ]
+        },
+        {
+          "name": "isFolderFollowing",
+          "result": "Boolean!",
+          "args": [
+            "folderId:ID!"
+          ]
+        },
+        {
+          "name": "folderFollowerCount",
+          "result": "Int!",
+          "args": [
+            "folderId:ID!"
+          ]
+        },
+        {
+          "name": "blockedComics",
+          "result": "[BlockedComic]!",
+          "args": [
+            "pagination:Pagination!"
+          ]
+        },
+        {
+          "name": "blockedComicIds",
+          "result": "[ID!]!",
+          "args": []
+        },
+        {
+          "name": "isComicBlocked",
+          "result": "Boolean!",
+          "args": [
+            "comicId:ID!"
+          ]
+        },
+        {
+          "name": "folderNotificationPreference",
+          "result": "FolderNotificationPreference!",
+          "args": [
+            "folderId:ID!"
+          ]
+        }
+      ],
+      "mutations": [
+        {
+          "name": "createFolder",
+          "result": "Folder!",
+          "args": [
+            "name:String!"
+          ]
+        },
+        {
+          "name": "removeFolder",
+          "result": "Boolean!",
+          "args": [
+            "folderId:ID!"
+          ]
+        },
+        {
+          "name": "addComicToFolder",
+          "result": "Boolean!",
+          "args": [
+            "comicId:ID!",
+            "folderId:ID!"
+          ]
+        },
+        {
+          "name": "addComicsToFolder",
+          "result": "Boolean!",
+          "args": [
+            "comicIds:[ID!]!",
+            "folderId:ID!"
+          ]
+        },
+        {
+          "name": "removeComicToFolder",
+          "result": "Boolean!",
+          "args": [
+            "comicId:ID!",
+            "folderId:ID!"
+          ]
+        },
+        {
+          "name": "removeComicsToFolder",
+          "result": "Boolean!",
+          "args": [
+            "comicIds:[ID!]!",
+            "folderId:ID!"
+          ]
+        },
+        {
+          "name": "updateFolderName",
+          "result": "Boolean!",
+          "args": [
+            "folderId:ID!",
+            "name:String!"
+          ]
+        },
+        {
+          "name": "followFolder",
+          "result": "FollowFolderResult!",
+          "args": [
+            "folderKey:String!"
+          ]
+        },
+        {
+          "name": "unfollowFolder",
+          "result": "Boolean!",
+          "args": [
+            "folderId:ID!"
+          ]
+        },
+        {
+          "name": "updateFolderAccess",
+          "result": "Boolean!",
+          "args": [
+            "folderId:ID!"
+          ]
+        },
+        {
+          "name": "blockComic",
+          "result": "Boolean!",
+          "args": [
+            "comicId:ID!"
+          ]
+        },
+        {
+          "name": "unblockComic",
+          "result": "Boolean!",
+          "args": [
+            "comicId:ID!"
+          ]
+        },
+        {
+          "name": "updateFolderNotificationPreference",
+          "result": "FolderNotificationPreference!",
+          "args": [
+            "folderId:ID!",
+            "pushEnabled:Boolean!"
+          ]
+        }
+      ]
+    },
+    {
+      "origin": "https://h.komiic.cc",
+      "queries": [
+        {
+          "name": "folders",
+          "result": "[Folder]!",
+          "args": [
+            "includeFollowed:Boolean",
+            "onlyFollowed:Boolean",
+            "contentType:ContentType"
+          ]
+        },
+        {
+          "name": "folder",
+          "result": "Folder!",
+          "args": [
+            "folderKey:String!"
+          ]
+        },
+        {
+          "name": "folderComicIds",
+          "result": "FolderComicIds!",
+          "args": [
+            "folderId:ID!",
+            "pagination:Pagination!"
+          ]
+        },
+        {
+          "name": "folderAllComicIds",
+          "result": "[ID!]!",
+          "args": [
+            "folderId:ID!"
+          ]
+        },
+        {
+          "name": "comicInAccountFolders",
+          "result": "[ID]!",
+          "args": [
+            "comicId:ID!"
+          ]
+        },
+        {
+          "name": "comicsInFolder",
+          "result": "[ComicInFolder]!",
+          "args": [
+            "comicIds:[ID!]!",
+            "folderId:ID!"
+          ]
+        },
+        {
+          "name": "isFolderFollowing",
+          "result": "Boolean!",
+          "args": [
+            "folderId:ID!"
+          ]
+        },
+        {
+          "name": "folderFollowerCount",
+          "result": "Int!",
+          "args": [
+            "folderId:ID!"
+          ]
+        },
+        {
+          "name": "blockedComics",
+          "result": "[BlockedComic]!",
+          "args": [
+            "pagination:Pagination!"
+          ]
+        },
+        {
+          "name": "blockedComicIds",
+          "result": "[ID!]!",
+          "args": []
+        },
+        {
+          "name": "isComicBlocked",
+          "result": "Boolean!",
+          "args": [
+            "comicId:ID!"
+          ]
+        },
+        {
+          "name": "folderNotificationPreference",
+          "result": "FolderNotificationPreference!",
+          "args": [
+            "folderId:ID!"
+          ]
+        }
+      ],
+      "mutations": [
+        {
+          "name": "createFolder",
+          "result": "Folder!",
+          "args": [
+            "name:String!"
+          ]
+        },
+        {
+          "name": "removeFolder",
+          "result": "Boolean!",
+          "args": [
+            "folderId:ID!"
+          ]
+        },
+        {
+          "name": "addComicToFolder",
+          "result": "Boolean!",
+          "args": [
+            "comicId:ID!",
+            "folderId:ID!"
+          ]
+        },
+        {
+          "name": "addComicsToFolder",
+          "result": "Boolean!",
+          "args": [
+            "comicIds:[ID!]!",
+            "folderId:ID!"
+          ]
+        },
+        {
+          "name": "removeComicToFolder",
+          "result": "Boolean!",
+          "args": [
+            "comicId:ID!",
+            "folderId:ID!"
+          ]
+        },
+        {
+          "name": "removeComicsToFolder",
+          "result": "Boolean!",
+          "args": [
+            "comicIds:[ID!]!",
+            "folderId:ID!"
+          ]
+        },
+        {
+          "name": "updateFolderName",
+          "result": "Boolean!",
+          "args": [
+            "folderId:ID!",
+            "name:String!"
+          ]
+        },
+        {
+          "name": "followFolder",
+          "result": "FollowFolderResult!",
+          "args": [
+            "folderKey:String!"
+          ]
+        },
+        {
+          "name": "unfollowFolder",
+          "result": "Boolean!",
+          "args": [
+            "folderId:ID!"
+          ]
+        },
+        {
+          "name": "updateFolderAccess",
+          "result": "Boolean!",
+          "args": [
+            "folderId:ID!"
+          ]
+        },
+        {
+          "name": "blockComic",
+          "result": "Boolean!",
+          "args": [
+            "comicId:ID!"
+          ]
+        },
+        {
+          "name": "unblockComic",
+          "result": "Boolean!",
+          "args": [
+            "comicId:ID!"
+          ]
+        },
+        {
+          "name": "updateFolderNotificationPreference",
+          "result": "FolderNotificationPreference!",
+          "args": [
+            "folderId:ID!",
+            "pushEnabled:Boolean!"
+          ]
+        }
+      ]
+    }
+  ],
+  "authentication": "Public contract reads only; no authenticated account or write operation was used."
+}

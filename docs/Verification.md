@@ -4,7 +4,7 @@
 
 新增回归覆盖：官网书柜/屏蔽的读写、删除与退出恢复、本机待重试操作的账号隔离；首页/账号首次加载与主动刷新；双页顺序、奇数尾页、步长；附近五话边界及按话数切换；警告封面显示状态与完全隐藏优先级。
 
-官网书柜的查询、创建、删除及成员变动使用已有 GraphQL 协议；屏蔽和更名操作根据官网自身 schema 确认操作名、参数和返回类型。若官网关闭 schema 查询，对应同步显示页内状态并保留待重试操作，绝不以空列表覆盖已读取的快照。脚本 `scripts/inspect_collections_api.py` 仅检查公开协议，不登录或发送 mutation。
+2026-11-22T16:08Z 云端只读核验了两个官网域名的 schema 和第一方客户端脚本，确认 `folders`、`folderComicIds`、`createFolder`、`removeFolder`、`addComicToFolder`、`removeComicToFolder`、`updateFolderName`、`blockedComicIds`、`blockComic`、`unblockComic` 的操作名、参数和返回类型，见 [0.5.0 接口记录](v0.5.0-api.json)。App 直接使用这些已确认的操作；失败保留快照及待重试操作。脚本 `scripts/inspect_collections_api.py` 仅检查公开协议，不登录或发送 mutation。
 
 实际登录账号的双向同步、iPad 真机双页和章节末尾手势仍需实际设备验收。测试源码与静态语法检查不等于这些验收已通过。
 

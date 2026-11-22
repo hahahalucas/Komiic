@@ -151,9 +151,10 @@ struct ReaderView: View {
     @MainActor private func continueToNextChapter() async {
         if !directoryLoaded { await loadDirectory() }
         guard directoryLoaded, directory.contains(where: { $0.id == currentChapter.id }), !loading else { return }
+        currentPage = max(0, pages.count - 1)
+        saveProgress()
         if let nextChapter { openChapter(nextChapter) }
         else {
-            saveProgress()
             dismiss()
             onReturnToDirectory?(comic)
         }

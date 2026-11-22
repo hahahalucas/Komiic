@@ -36,7 +36,7 @@ struct RootView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var selected: AppTab = .home
     @State private var paths: [AppTab: NavigationPath] = [:]
-    @State private var librarySection: LibrarySection = .bookmarks
+    @State private var librarySection: LibrarySection = .shelves
     @State private var searchPrompt = false
     @State private var seenCompleted: Set<String> = []
     @State private var started = false

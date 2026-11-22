@@ -15,6 +15,7 @@ final class CatalogModel: ObservableObject {
 
     func loadIfNeeded(feed: CatalogFeed, filter: ContentFilter) async {
         guard loadedFilter != filter, !(loading && requestedFilter == filter) else { return }
+        guard error == nil || requestedFilter != filter else { return }
         await load(feed: feed, filter: filter, reset: true)
     }
 

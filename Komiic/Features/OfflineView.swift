@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct OfflineView: View {
+    @Environment(\.openComicDirectory) private var openComicDirectory
     @EnvironmentObject private var downloads: DownloadStore
     @State private var launch: ReaderLaunch?
     @State private var deleting: String?
@@ -55,7 +56,9 @@ struct OfflineView: View {
                 }
             }.padding(16)
         }
-        .fullScreenCover(item: $launch) { item in ReaderView(comic: item.comic, chapter: item.chapter, initialPage: item.page) }
+        .fullScreenCover(item: $launch) { item in
+            ReaderView(comic: item.comic, chapter: item.chapter, initialPage: item.page, onReturnToDirectory: openComicDirectory)
+        }
         .confirmationDialog("删除已下载的章节？", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), titleVisibility: .visible) {
             Button("删除下载", role: .destructive) { if let deleting { downloads.remove(id: deleting) }; deleting = nil }
         }
