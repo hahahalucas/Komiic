@@ -58,9 +58,9 @@
 
 ## 验证与构建
 
-0.7.0 增加加载流程回归测试，覆盖合并查询、后台解码、封面请求合并、缓存大小、过期及清理并发、跳页优先级和图片额度。完整本地与云端结果见[验证记录](docs/Verification.md)。
+0.7.0 的本地工程结构及 Swift 语法检查、Xcode 26.6 / iOS SDK 26.5 设备 Release 编译及 IPA 校验通过；iPhone 和 iPad 各 95 项 XCTest 通过，共 190 项、零失败。包含新增的 12 项加载回归测试，完整结果见[验证记录](docs/Verification.md)。
 
-0.7.0 的 IPA 交付状态见[构建说明](docs/IPA.md)。[0.6.0 历史产物](https://github.com/hahahalucas/Komiic/actions/runs/45184721681/artifacts/14824662819)不包含本次加载优化。
+[下载 0.7.0 IPA 及完整验证资料](https://github.com/hahahalucas/Komiic/actions/runs/45208173469/artifacts/14835749218)。项目根目录的交付副本为 `Komiic-0.7.0-iPhone-iPad-unsigned.ipa`，安装前需自签。构建和签名说明见[构建说明](docs/IPA.md)。
 
 本地环境为 Windows，可执行工程结构和 Swift 语法检查：
 

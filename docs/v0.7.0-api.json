@@ -60,5 +60,71 @@
       ]
     }
   ],
-  "status": "passed"
+  "status": "passed",
+  "cloudVerification": {
+    "version": "0.7.0",
+    "checkedAtUTC": "2026-11-23T15:44:34.856513+00:00",
+    "limitations": "Runner timings only; no device benchmark or authenticated session test.",
+    "checks": [
+      {
+        "origin": "https://komiic.cc",
+        "contentMode": "REGULAR",
+        "checks": [
+          {
+            "operation": "recentUpdate",
+            "http": 200,
+            "milliseconds": 221.4,
+            "bytes": 552
+          },
+          {
+            "operation": "comicDetails",
+            "http": 200,
+            "milliseconds": 205.0,
+            "bytes": 2026,
+            "chapters": 11
+          },
+          {
+            "operation": "publicCover",
+            "http": 200,
+            "milliseconds": 165.6,
+            "bytes": 25244,
+            "contentType": "application/octet-stream",
+            "format": "jpeg",
+            "cookiesSent": false
+          }
+        ]
+      },
+      {
+        "origin": "https://h.komiic.cc",
+        "contentMode": "H_MANGA",
+        "checks": [
+          {
+            "operation": "recentUpdate",
+            "http": 200,
+            "milliseconds": 282.6,
+            "bytes": 410
+          },
+          {
+            "operation": "comicDetails",
+            "http": 200,
+            "milliseconds": 214.4,
+            "bytes": 539,
+            "chapters": 1
+          },
+          {
+            "operation": "publicCover",
+            "http": 200,
+            "milliseconds": 116.3,
+            "bytes": 31822,
+            "contentType": "image/webp",
+            "format": "webp",
+            "cookiesSent": false
+          }
+        ]
+      }
+    ],
+    "status": "passed",
+    "workflowRun": "https://github.com/hahahalucas/Komiic/actions/runs/45208173469",
+    "artifactID": 14835456634
+  }
 }

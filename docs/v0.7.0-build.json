@@ -1,0 +1,77 @@
+{
+  "version": "0.7.0",
+  "build": 7,
+  "baseCommit": "955824db16bc28b806ab4e652eaf1aba9191d222",
+  "appSourceCommit": "bc4bfde7270bd21d40a99e083b3d860af9b85518",
+  "sourceTree": "1e85d42f99cc32cef689d175db6410c4e04d7eab",
+  "branch": "codex/komiic-0.7.0",
+  "workflowRun": "https://github.com/hahahalucas/Komiic/actions/runs/45208173469",
+  "conclusion": "success",
+  "artifactURL": "https://github.com/hahahalucas/Komiic/actions/runs/45208173469/artifacts/14835749218",
+  "artifactID": 14835749218,
+  "artifactZIPBytes": 125387701,
+  "artifactZIPSHA256": "133bfac976fd02602569fcd61612bf2d087b137f0a9c475d5979c9fa3227a010",
+  "artifactExpiresAt": "2026-12-01T00:02:22+08:00",
+  "deliveryFile": "Komiic-0.7.0-iPhone-iPad-unsigned.ipa",
+  "ipaBytes": 1321336,
+  "ipa": {
+    "bundleIdentifier": "com.example.Komiic",
+    "version": "0.7.0",
+    "deviceFamilies": [
+      "iPhone",
+      "iPad"
+    ],
+    "minimumOS": "17.0",
+    "sdk": "iphoneos26.5",
+    "executableBytes": 5820000,
+    "executableSHA256": "e921c1625f3ded24154b26b821d926e2ad66140cf2b562b073d7455dfd1d2ee1",
+    "macho": [
+      {
+        "architecture": "arm64",
+        "platform": 2,
+        "minimumOS": "17.0.0",
+        "sdk": "26.5.0",
+        "swiftUILinked": true,
+        "codeSignatureCommand": false
+      }
+    ],
+    "signing": "unsigned",
+    "signatureStructurePresent": false,
+    "appleSignatureTrustCheckedByThisScript": false,
+    "installation": "Requires your own authorized signing before installation.",
+    "checks": [
+      "IPA layout",
+      "bundle plist",
+      "iPhone+iPad families",
+      "arm64 executable",
+      "iOS device platform",
+      "iOS SDK 26+",
+      "SwiftUI linkage",
+      "executable permission",
+      "signing structure"
+    ],
+    "ipaSHA256": "67b0939a743c8ca6c256d6844d46428f1b80fd8f06eab190feb945e84c0139ac"
+  },
+  "tests": {
+    "countPerDevice": 95,
+    "total": 190,
+    "failures": 0,
+    "status": "passed",
+    "newTestsPerDevice": 12,
+    "devices": [
+      "iPhone",
+      "iPad"
+    ]
+  },
+  "localIPAVerification": "passed",
+  "artifactDigestVerified": true,
+  "appSourceMatchesWorkspace": true,
+  "publicAPIVerification": {
+    "localChecks": 6,
+    "cloudChecks": 6,
+    "status": "passed",
+    "cloudArtifactID": 14835456634
+  },
+  "physicalDeviceAcceptance": "Not performed; iPhone home screenshot checked and public covers are visible.",
+  "deviceSpeedBenchmark": "Not performed; runner timings are not a measurement of on-device speed."
+}

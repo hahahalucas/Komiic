@@ -10,7 +10,16 @@
 
 新增 12 项 XCTest，覆盖单次详情请求及不存在的漫画、原图与缩略图尺寸、无效数据、EXIF 方向、并发封面复用、缓存覆盖计数、旧代次写入、分章节清理与新代次、过期缓存、跳页优先级及额度中止。原有 83 项继续保留。
 
-2026-11-23（Asia/Shanghai）Windows 本地工程结构及严格 Swift 语法检查通过，41 个 Swift 文件无语法错误。首次沙箱网络检查受到限制；获得网络访问后，对普通及 H 两个官网各检查首页、合并详情与公开封面，共 6 次请求均返回 HTTP 200，见 [0.7.0 接口记录](v0.7.0-api.json)。Mac 编译、iPhone / iPad XCTest 及 IPA 状态待云端构建结果。语法检查不代替编译、测试或真机速度测量。
+2026-11-23（Asia/Shanghai）Windows 本地工程结构及严格 Swift 语法检查通过，41 个 Swift 文件无语法错误。首次沙箱网络检查受到限制；获得网络访问后，对普通及 H 两个官网各检查首页、合并详情与公开封面，共 6 次请求均返回 HTTP 200。云端再次完成相同 6 项检查并通过，见 [0.7.0 接口记录](v0.7.0-api.json)。
+
+2026-11-24（Asia/Shanghai）[完整云端构建 45208173469](https://github.com/hahahalucas/Komiic/actions/runs/45208173469)成功：Xcode 26.6 / iOS SDK 26.5 设备 Release 编译及 IPA 校验通过，iPhone 和 iPad 各 **95 项 XCTest** 全部通过，共 **190 项、零失败**。两份设备测试日志均包含 `TEST SUCCEEDED`，设备编译日志包含 `BUILD SUCCEEDED`。
+
+- 源码基于已验证的 0.6.0 提交 `955824db16bc28b806ab4e652eaf1aba9191d222`，构建分支为 [`codex/komiic-0.7.0`](https://github.com/hahahalucas/Komiic/tree/codex/komiic-0.7.0)，实际构建提交为 [`bc4bfde7270bd21d40a99e083b3d860af9b85518`](https://github.com/hahahalucas/Komiic/commit/bc4bfde7270bd21d40a99e083b3d860af9b85518)。全部 41 个 Swift 源文件的 Git blob 散列与本地工作区一致。
+- [下载 0.7.0 IPA 及完整验证资料](https://github.com/hahahalucas/Komiic/actions/runs/45208173469/artifacts/14835749218)，包含 IPA、两份 XCTest 结果、iPhone/iPad 首页截图和设备编译日志。Artifact 保留至北京时间 2026-12-01 00:02:22。
+- 完整产物 ZIP 为 125,387,701 字节，SHA-256：`133bfac976fd02602569fcd61612bf2d087b137f0a9c475d5979c9fa3227a010`，本地核对与 GitHub Artifact digest 一致。
+- 交付文件 `Komiic-0.7.0-iPhone-iPad-unsigned.ipa` 已保存至项目根目录，1,321,336 字节；版本 0.7.0、build 7、arm64 iOS 设备平台、最低 iOS 17、iPhone/iPad 支持、SwiftUI 链接及未签名结构本地再次校验通过。IPA SHA-256：`67b0939a743c8ca6c256d6844d46428f1b80fd8f06eab190feb945e84c0139ac`，与云端报告一致；安装前需自签。
+- 完整记录见 [`v0.7.0-build.json`](v0.7.0-build.json)，本地精简验证资料位于 `build/v0.7.0-verified-artifacts/`，完整归档为 `build/Komiic-0.7.0-full-verification.zip`。
+- 已检查 iPhone 首页截图，确认官网漫画和封面正常显示。真机安装、受保护漫画的真实账号读取及手机端速度测量尚未执行；现有结果不代表这些验收已经完成。
 
 接口检查脚本 `scripts/verify_loading_api.py` 仅发送公开只读查询与封面请求，不携带 Cookie、不获取图片票据、不写入账号数据。脚本跟随官方 CDN 重定向，并识别以 `application/octet-stream` 返回的真实 JPEG 封面；App 原有封面解码同样支持这种响应。报告的耗时仅代表执行环境的网络，不能当成手机端提速百分比。
 
