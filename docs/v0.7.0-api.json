@@ -1,0 +1,64 @@
+{
+  "version": "0.7.0",
+  "checkedAtUTC": "2026-11-23T15:41:20.962744+00:00",
+  "limitations": "Runner timings only; no device benchmark or authenticated session test.",
+  "checks": [
+    {
+      "origin": "https://komiic.cc",
+      "contentMode": "REGULAR",
+      "checks": [
+        {
+          "operation": "recentUpdate",
+          "http": 200,
+          "milliseconds": 677.9,
+          "bytes": 552
+        },
+        {
+          "operation": "comicDetails",
+          "http": 200,
+          "milliseconds": 334.4,
+          "bytes": 2026,
+          "chapters": 11
+        },
+        {
+          "operation": "publicCover",
+          "http": 200,
+          "milliseconds": 457.8,
+          "bytes": 25244,
+          "contentType": "application/octet-stream",
+          "format": "jpeg",
+          "cookiesSent": false
+        }
+      ]
+    },
+    {
+      "origin": "https://h.komiic.cc",
+      "contentMode": "H_MANGA",
+      "checks": [
+        {
+          "operation": "recentUpdate",
+          "http": 200,
+          "milliseconds": 2235.2,
+          "bytes": 410
+        },
+        {
+          "operation": "comicDetails",
+          "http": 200,
+          "milliseconds": 349.4,
+          "bytes": 539,
+          "chapters": 1
+        },
+        {
+          "operation": "publicCover",
+          "http": 200,
+          "milliseconds": 590.6,
+          "bytes": 31822,
+          "contentType": "image/webp",
+          "format": "webp",
+          "cookiesSent": false
+        }
+      ]
+    }
+  ],
+  "status": "passed"
+}

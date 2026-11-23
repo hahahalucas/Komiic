@@ -13,6 +13,7 @@ import json
 from pathlib import Path
 import time
 from urllib.parse import urlsplit, urlunsplit
+from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -20,6 +21,20 @@ ROOT = Path(__file__).resolve().parents[1]
 def fields() -> str:
     source = (ROOT / "Komiic/Core/KomiicAPI.swift").read_text(encoding="utf-8-sig")
     return source.split('private static let comicFields = """', 1)[1].split('"""', 1)[0].strip()
+
+
+def image_format(data):
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "png"
+    if data.startswith(b"\xff\xd8\xff"):
+        return "jpeg"
+    if data.startswith((b"GIF87a", b"GIF89a")):
+        return "gif"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "webp"
+    if data[4:8] == b"ftyp" and data[8:12] in (b"avif", b"avis", b"heic", b"heix"):
+        return data[8:12].decode("ascii")
+    return None
 
 
 def query(connection, origin, operation, text, variables):
@@ -66,19 +81,24 @@ def check_origin(origin, content_mode):
             parts = parts._replace(netloc=parts.netloc.replace("komiic.com", "komiic.cc"))
         if parts.scheme != "https" or not (parts.hostname == "komiic.cc" or parts.hostname.endswith(".komiic.cc")):
             raise RuntimeError("Cover is not on the official HTTPS CDN")
-        image_connection = http.client.HTTPSConnection(parts.hostname, timeout=25)
-        try:
-            started = time.perf_counter()
-            image_connection.request("GET", urlunsplit(("", "", parts.path, parts.query, "")), headers={"Referer": origin + "/"})
-            response = image_connection.getresponse()
+        started = time.perf_counter()
+        request = Request(urlunsplit(parts), headers={"Referer": origin + "/", "User-Agent": "Komiic-Validation/0.7.0"})
+        # URLSession follows CDN redirects; validate the same path instead of treating
+        # a regional CDN's redirect as a broken image.
+        with urlopen(request, timeout=25) as response:
+            final = urlsplit(response.url)
+            if final.scheme != "https" or not any(final.hostname == domain or final.hostname.endswith("." + domain) for domain in ("komiic.cc", "komiic.com")):
+                raise RuntimeError("Cover redirected outside the official HTTPS CDN")
             data = response.read(8 * 1024 * 1024 + 1)
-            if response.status != 200 or not response.getheader("Content-Type", "").startswith("image/") or not data or len(data) > 8 * 1024 * 1024:
-                raise RuntimeError(f"{origin}: invalid public cover response")
+            content_type = response.headers.get("Content-Type", "")
+            # Public covers may use application/octet-stream. Like the native cover
+            # decoder, check the payload instead of rejecting its generic MIME type.
+            detected_format = image_format(data)
+            if response.status != 200 or detected_format is None or len(data) > 8 * 1024 * 1024:
+                raise RuntimeError(f"{origin}: cover HTTP {response.status}, type={content_type}, bytes={len(data)}")
             checks.append({"operation": "publicCover", "http": response.status,
                 "milliseconds": round((time.perf_counter() - started) * 1000, 1), "bytes": len(data),
-                "contentType": response.getheader("Content-Type"), "cookiesSent": False})
-        finally:
-            image_connection.close()
+                "contentType": content_type, "format": detected_format, "cookiesSent": False})
     return {"origin": origin, "contentMode": content_mode, "checks": checks}
 
 
