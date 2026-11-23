@@ -120,6 +120,18 @@ struct KomiicAPI: Sendable {
         return normalized(comic)
     }
 
+    /// Both sections of the detail screen travel in one GraphQL round trip.
+    func comicDetails(id: String) async throws -> (comic: Comic, chapters: [Chapter]) {
+        let data: ComicDetailsResult = try await perform("comicDetails", query: """
+            query comicDetails($comicId: ID!) {
+                comicById(comicId: $comicId) { \(Self.comicFields) description sexyLevel sexyLevelReason }
+                chaptersByComicId(comicId: $comicId) { id serial type size }
+            }
+            """, variables: ["comicId": id])
+        guard let comic = data.comicById else { throw KomiicError.notFound }
+        return (normalized(comic), Self.sortedChapters(data.chaptersByComicId))
+    }
+
     /// The first-party author page returns the author's complete collection without pagination.
     func comics(authorID: String) async throws -> [Comic] {
         let query = "query comicsByAuthor($authorId: ID!) { comics: getComicsByAuthor(authorId: $authorId) { \(Self.comicFields) } }"
@@ -139,7 +151,11 @@ struct KomiicAPI: Sendable {
     func chapters(comicID: String) async throws -> [Chapter] {
         let query = "query chapterByComicId($comicId: ID!) { chaptersByComicId(comicId: $comicId) { id serial type size } }"
         let data: ChapterResult = try await perform("chapterByComicId", query: query, variables: ["comicId": comicID])
-        return data.chaptersByComicId.compactMap { $0 }.sorted {
+        return Self.sortedChapters(data.chaptersByComicId)
+    }
+
+    private static func sortedChapters(_ chapters: [Chapter?]) -> [Chapter] {
+        chapters.compactMap { $0 }.sorted {
             if $0.type != $1.type { return $0.type == "chapter" || ($0.type == "book" && $1.type != "chapter") }
             return $0.serial.compare($1.serial, options: .numeric) == .orderedAscending
         }
@@ -454,6 +470,10 @@ private struct AuthorSearchResult: Decodable {
     struct Matches: Decodable { let authors: [ComicAuthor?]? }
 }
 private struct ComicResult: Decodable { let comicById: Comic? }
+private struct ComicDetailsResult: Decodable {
+    let comicById: Comic?
+    let chaptersByComicId: [Chapter?]
+}
 private struct ChapterResult: Decodable { let chaptersByComicId: [Chapter?] }
 private struct PageResult: Decodable { let imagesByChapterId: [ComicPage?] }
 private struct TicketResult: Decodable {

@@ -225,21 +225,55 @@ final class DownloadStoreTests: XCTestCase {
             XCTAssertEqual(data, bytes)
         }
     }
+
+    func testJumpingAheadPrioritizesNewReadingPositionWithoutRestartingRequests() async throws {
+        let root = try directory()
+        let probe = ChapterImageProbe(bytes: png(), delay: .milliseconds(200))
+        let pages = (0..<12).map { ComicPage(id: "page-\($0)", kid: "key-\($0)") }
+        let store = DownloadStore(directoryURL: root.appendingPathComponent("offline"), cacheDirectory: root.appendingPathComponent("cache"),
+            imageLoader: { page, _ in try await probe.load(page) })
+        let prefetch = Task {
+            await store.prefetchChapter(pages: pages, chapterID: "chapter", baseURL: URL(string: "https://example.invalid")!, cachePolicy: .oneDay)
+        }
+        try await eventually { await probe.requestedIDs.count == 3 }
+        store.prioritizeReading(chapterID: "chapter", pageIndex: 7)
+        await prefetch.value
+        let requested = await probe.requestedIDs
+        XCTAssertEqual(Set(requested[3..<6]), Set(pages[7...9].map(\.id)))
+        XCTAssertEqual(requested.count, pages.count)
+        XCTAssertEqual(Set(requested).count, pages.count)
+        let maximum = await probe.maximumConcurrentRequests
+        XCTAssertLessThanOrEqual(maximum, 3)
+    }
+
+    func testQuotaFailureStopsRemainingChapterPrefetch() async throws {
+        let root = try directory()
+        let probe = ChapterImageProbe(bytes: png(), quotaExceeded: true)
+        let pages = (0..<12).map { ComicPage(id: "page-\($0)", kid: "key-\($0)") }
+        let store = DownloadStore(directoryURL: root.appendingPathComponent("offline"), cacheDirectory: root.appendingPathComponent("cache"),
+            imageLoader: { page, _ in try await probe.load(page) })
+        await store.prefetchChapter(pages: pages, chapterID: "chapter", baseURL: URL(string: "https://example.invalid")!, cachePolicy: .oneDay)
+        let requested = await probe.requestedIDs
+        XCTAssertLessThanOrEqual(requested.count, 3)
+        XCTAssertEqual(store.cacheBytes, 0)
+    }
 }
 
 private actor ChapterImageProbe {
     let bytes: Data
     let delay: Duration
     private var failingPageIDs: Set<String>
+    private let quotaExceeded: Bool
     private var activeRequests = 0
     private(set) var requestedIDs: [String] = []
     private(set) var cancelledIDs: Set<String> = []
     private(set) var maximumConcurrentRequests = 0
 
-    init(bytes: Data, delay: Duration = .milliseconds(30), failingPageIDs: Set<String> = []) {
+    init(bytes: Data, delay: Duration = .milliseconds(30), failingPageIDs: Set<String> = [], quotaExceeded: Bool = false) {
         self.bytes = bytes
         self.delay = delay
         self.failingPageIDs = failingPageIDs
+        self.quotaExceeded = quotaExceeded
     }
 
     func allowPage(_ id: String) { failingPageIDs.remove(id) }
@@ -251,6 +285,7 @@ private actor ChapterImageProbe {
         defer { activeRequests -= 1 }
         do { try await Task.sleep(for: delay) }
         catch { cancelledIDs.insert(page.id); throw error }
+        if quotaExceeded { throw KomiicError.imageQuotaExceeded }
         if failingPageIDs.contains(page.id) { throw URLError(.cannotLoadFromNetwork) }
         return bytes
     }

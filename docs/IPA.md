@@ -4,7 +4,9 @@
 
 iPad 不强制全屏，声明全部四个方向以支持系统多任务与可变窗口。窗口中的方向和大小以 iPadOS 的规则为准；阅读方向偏好不能覆盖系统对窗口场景的限制。
 
-当前源码为 **0.6.0（build 6）**，包含进入章节后自动预加载整话、阅读器始终隐藏系统状态栏及删除底部缓存提示行的更新；阅读按键位置保持原样。0.6.0 的构建及测试状态见[验证记录](Verification.md)。
+当前源码为 **0.7.0（build 7）**，包含官网连接池复用、详情与目录合并请求、后台图片解码与缓存读写、缓存增量统计和跟随阅读位置的整话预加载。构建及测试状态见[验证记录](Verification.md)。0.7.0 的交付文件名为 `Komiic-0.7.0-iPhone-iPad-unsigned.ipa`，生成及验证结果待云端构建完成。
+
+以下为 **0.6.0 历史构建记录**。
 
 [0.6.0 完整云端构建](https://github.com/hahahalucas/Komiic/actions/runs/45184721681)已成功：iPhone、iPad 各 83 项 XCTest 通过，零失败；Xcode 26.6 / iOS SDK 26.5 的设备 Release 编译与 IPA 校验通过。[下载产物](https://github.com/hahahalucas/Komiic/actions/runs/45184721681/artifacts/14824662819)包含 `Komiic-iPhone-iPad-unsigned.ipa`、两种设备的测试结果、首页截图及构建日志。带版本号的交付副本为 `Komiic-0.6.0-iPhone-iPad-unsigned.ipa`，安装前需自签。
 

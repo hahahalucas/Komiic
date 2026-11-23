@@ -289,6 +289,39 @@ final class KomiicAPITests: XCTestCase {
         XCTAssertTrue(query.contains("description sexyLevel sexyLevelReason"))
     }
 
+    func testComicDetailsLoadsComicAndSortedChaptersInOneRequest() async throws {
+        let requests = LockedBox<[URLRequest]>([])
+        StubURLProtocol.handler = { request in
+            requests.update { $0.append(request) }
+            return (200, "application/json", Data(#"{"data":{"comicById":{"id":"1","title":"漫画","imageUrl":"https://public.komiic.com/cover.jpg"},"chaptersByComicId":[null,{"id":"10","serial":"10","type":"chapter"},{"id":"2","serial":"2","type":"chapter"},{"id":"b","serial":"1","type":"book"}]}}"#.utf8))
+        }
+        let regionalAPI = KomiicAPI(mode: .adult, session: session, imageSession: session)
+        let result = try await regionalAPI.comicDetails(id: "1")
+        XCTAssertEqual(requests.value.count, 1)
+        XCTAssertEqual(result.comic.id, "1")
+        XCTAssertEqual(result.comic.imageUrl?.host, "public.komiic.cc")
+        XCTAssertEqual(result.chapters.map(\.id), ["2", "10", "b"])
+        let request = try XCTUnwrap(requests.value.first)
+        XCTAssertEqual(request.url?.host, "h.komiic.cc")
+        let payload = try XCTUnwrap(try JSONSerialization.jsonObject(with: requestBody(request)) as? [String: Any])
+        XCTAssertEqual(payload["operationName"] as? String, "comicDetails")
+        let query = try XCTUnwrap(payload["query"] as? String)
+        XCTAssertTrue(query.contains("comicById(comicId: $comicId)"))
+        XCTAssertTrue(query.contains("chaptersByComicId(comicId: $comicId)"))
+        let variables = try XCTUnwrap(payload["variables"] as? [String: Any])
+        XCTAssertEqual(variables["comicId"] as? String, "1")
+    }
+
+    func testMissingComicDetailsDoesNotBecomeAnEmptySuccess() async throws {
+        StubURLProtocol.handler = { _ in
+            (200, "application/json", Data(#"{"data":{"comicById":null,"chaptersByComicId":[]}}"#.utf8))
+        }
+        do {
+            _ = try await api.comicDetails(id: "missing")
+            XCTFail("A missing comic must keep the existing not-found state")
+        } catch KomiicError.notFound {}
+    }
+
     func testAuthorSearchTrimsKeywordAndFiltersNullRows() async throws {
         let requests = LockedBox<[URLRequest]>([])
         StubURLProtocol.handler = { request in

@@ -57,7 +57,9 @@ final class DownloadStore: ObservableObject {
     let directoryURL: URL
     private let cacheDirectory: URL
     private let fileManager = FileManager.default
-    private let session: URLSession
+    private let session: URLSession?
+    private let pageCache: PageImageDiskCache
+    private var cacheRevision: UInt64 = 0
     private let imageLoader: (@Sendable (ComicPage, URL) async throws -> Data)?
     private var queue: [String] = []
     private var worker: Task<Void, Never>?
@@ -73,6 +75,7 @@ final class DownloadStore: ObservableObject {
     }
     private var imageRequests: [ImageRequestKey: PendingImageRequest] = [:]
     private var cacheGenerations: [String: UUID] = [:]
+    private var readingPositions: [String: Int] = [:]
 
     var storageBytes: Int64 { items.reduce(0) { $0 + $1.byteCount } }
     var availableBytes: Int64 {
@@ -83,17 +86,10 @@ final class DownloadStore: ObservableObject {
          imageLoader: (@Sendable (ComicPage, URL) async throws -> Data)? = nil) {
         self.directoryURL = directoryURL ?? URL.documentsDirectory.appendingPathComponent("KomiicOffline", isDirectory: true)
         self.cacheDirectory = cacheDirectory ?? URL.cachesDirectory.appendingPathComponent("KomiicPages", isDirectory: true)
+        self.pageCache = PageImageDiskCache(directory: self.cacheDirectory)
         self.imageLoader = imageLoader
-        if let session { self.session = session }
-        else {
-            let configuration = URLSessionConfiguration.default
-            configuration.httpCookieStorage = .shared
-            configuration.httpShouldSetCookies = true
-            configuration.timeoutIntervalForRequest = 40
-            configuration.timeoutIntervalForResource = 180
-            configuration.urlCache = nil
-            self.session = URLSession(configuration: configuration)
-        }
+        // Use KomiicAPI's shared connection pool for image tickets and all other API calls.
+        self.session = session
         do {
             try fileManager.createDirectory(at: self.directoryURL, withIntermediateDirectories: true)
             try fileManager.createDirectory(at: self.cacheDirectory, withIntermediateDirectories: true)
@@ -202,12 +198,19 @@ final class DownloadStore: ObservableObject {
     /// Offline reading never requires the network when all chapter pages are present.
     func imageData(page: ComicPage, chapterID: String, baseURL: URL, cachePolicy: CachePolicy, allowNetwork: Bool = true) async throws -> Data {
         try Task.checkCancellation()
-        if let url = localImageURL(chapterID: chapterID, pageID: page.id), let data = try? Data(contentsOf: url), UIImage(data: data) != nil { return data }
-        let cachedURL = pageFile(in: cacheChapterDirectory(chapterID), pageID: page.id)
-        if let data = try? Data(contentsOf: cachedURL), UIImage(data: data) != nil {
-            let modified = (try? cachedURL.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-            if cachePolicy != .oneDay || Date().timeIntervalSince(modified) < 86_400 { return data }
+        let generation = cacheGenerations[chapterID] ?? UUID()
+        cacheGenerations[chapterID] = generation
+        if let url = localImageURL(chapterID: chapterID, pageID: page.id), let data = await ImageDecoding.read(from: url) {
+            try Task.checkCancellation()
+            return data
         }
+        let cachedURL = pageFile(in: cacheChapterDirectory(chapterID), pageID: page.id)
+        if let data = await pageCache.read(from: cachedURL, maximumAge: cachePolicy == .oneDay ? 86_400 : nil) {
+            try Task.checkCancellation()
+            return data
+        }
+        try Task.checkCancellation()
+        guard cacheGenerations[chapterID] == generation else { throw CancellationError() }
         guard allowNetwork else { throw ImageStorageError.missingOfflinePage }
         let key = ImageRequestKey(chapterID: chapterID, page: page, baseURL: baseURL)
         let readerID = UUID()
@@ -217,16 +220,23 @@ final class DownloadStore: ObservableObject {
             imageRequests[key] = pending
             task = pending.task
         } else {
-            let generation = cacheGenerations[chapterID] ?? UUID()
-            cacheGenerations[chapterID] = generation
+            pageCache.register(chapter: Self.fileName(chapterID), generation: generation)
             task = Task {
+                // Another reader may have finished while the initial disk read was pending.
+                if let cached = await pageCache.read(from: cachedURL, maximumAge: cachePolicy == .oneDay ? 86_400 : nil) {
+                    try Task.checkCancellation()
+                    return cached
+                }
+                try Task.checkCancellation()
                 let data = try await fetchImage(page: page, baseURL: baseURL)
                 try Task.checkCancellation()
                 // A page already in flight must not recreate a cleared chapter cache.
                 if cacheGenerations[chapterID] == generation {
-                    try fileManager.createDirectory(at: cachedURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-                    try data.write(to: cachedURL, options: .atomic)
-                    updateCacheSize()
+                    do {
+                        let snapshot = try await pageCache.write(data, to: cachedURL,
+                            chapter: Self.fileName(chapterID), generation: generation)
+                        updateCacheSize(snapshot)
+                    } catch { lastError = "阅读缓存尚未保存：\(error.localizedDescription)" }
                 }
                 return data
             }
@@ -250,26 +260,48 @@ final class DownloadStore: ObservableObject {
         let generation = cacheGenerations[chapterID] ?? UUID()
         cacheGenerations[chapterID] = generation
         let start = min(max(0, pageIndex), pages.count - 1)
-        let orderedPages = Array(pages[start...]) + Array(pages[..<start])
-        await withTaskGroup(of: Void.self) { group in
-            var remaining = orderedPages.makeIterator()
+        readingPositions[chapterID] = start
+        await withTaskGroup(of: Bool.self) { group in
+            var remaining = Set(pages.indices)
+            func nextPage() -> ComicPage? {
+                let position = min(max(0, readingPositions[chapterID] ?? start), pages.count - 1)
+                guard let index = remaining.min(by: {
+                    ($0 - position + pages.count) % pages.count < ($1 - position + pages.count) % pages.count
+                }) else { return nil }
+                remaining.remove(index)
+                return pages[index]
+            }
             // Leave connection capacity for the currently visible page and API calls.
             for _ in 0..<3 {
-                guard !Task.isCancelled, let page = remaining.next() else { break }
+                guard !Task.isCancelled, let page = nextPage() else { break }
                 group.addTask { @MainActor in
-                    guard self.cacheGenerations[chapterID] == generation else { return }
-                    _ = try? await self.imageData(page: page, chapterID: chapterID, baseURL: baseURL, cachePolicy: cachePolicy)
+                    guard self.cacheGenerations[chapterID] == generation else { return true }
+                    return await self.prefetchPage(page, chapterID: chapterID, baseURL: baseURL, cachePolicy: cachePolicy)
                 }
             }
-            for await _ in group {
-                guard !Task.isCancelled, cacheGenerations[chapterID] == generation else { group.cancelAll(); break }
-                guard let page = remaining.next() else { continue }
+            for await shouldStop in group {
+                guard !shouldStop, !Task.isCancelled, cacheGenerations[chapterID] == generation else { group.cancelAll(); break }
+                guard let page = nextPage() else { continue }
                 group.addTask { @MainActor in
-                    guard self.cacheGenerations[chapterID] == generation else { return }
-                    _ = try? await self.imageData(page: page, chapterID: chapterID, baseURL: baseURL, cachePolicy: cachePolicy)
+                    guard self.cacheGenerations[chapterID] == generation else { return true }
+                    return await self.prefetchPage(page, chapterID: chapterID, baseURL: baseURL, cachePolicy: cachePolicy)
                 }
             }
         }
+    }
+
+    func prioritizeReading(chapterID: String, pageIndex: Int) {
+        readingPositions[chapterID] = max(0, pageIndex)
+    }
+
+    /// A damaged page can be skipped; account limits stop background traffic.
+    private func prefetchPage(_ page: ComicPage, chapterID: String, baseURL: URL, cachePolicy: CachePolicy) async -> Bool {
+        do { _ = try await imageData(page: page, chapterID: chapterID, baseURL: baseURL, cachePolicy: cachePolicy) }
+        catch KomiicError.imageQuotaExceeded { return true }
+        catch KomiicError.rateLimited { return true }
+        catch KomiicError.authenticationRequired { return true }
+        catch {}
+        return false
     }
 
     private func releaseImageRequest(_ key: ImageRequestKey, readerID: UUID) {
@@ -285,25 +317,16 @@ final class DownloadStore: ObservableObject {
     func clearCache(chapterID: String? = nil) {
         if let chapterID { cacheGenerations.removeValue(forKey: chapterID) }
         else { cacheGenerations.removeAll() }
-        let target = chapterID.map(cacheChapterDirectory) ?? cacheDirectory
+        if let chapterID { readingPositions.removeValue(forKey: chapterID) }
+        else { readingPositions.removeAll() }
         do {
-            if fileManager.fileExists(atPath: target.path) { try fileManager.removeItem(at: target) }
-            if chapterID == nil { try fileManager.createDirectory(at: cacheDirectory, withIntermediateDirectories: true) }
-            updateCacheSize()
+            updateCacheSize(try pageCache.clear(chapter: chapterID.map(Self.fileName)))
         } catch { lastError = "无法清除阅读缓存：\(error.localizedDescription)" }
     }
 
     func applyCachePolicy(_ policy: CachePolicy) {
-        if policy == .oneDay, let enumerator = fileManager.enumerator(at: cacheDirectory, includingPropertiesForKeys: [.contentModificationDateKey, .isRegularFileKey]) {
-            for case let url as URL in enumerator {
-                guard let values = try? url.resourceValues(forKeys: [.contentModificationDateKey, .isRegularFileKey]), values.isRegularFile == true else { continue }
-                if Date().timeIntervalSince(values.contentModificationDate ?? .distantPast) >= 86_400 {
-                    do { try fileManager.removeItem(at: url) }
-                    catch { lastError = "部分阅读缓存无法清除：\(error.localizedDescription)" }
-                }
-            }
-        }
-        updateCacheSize()
+        do { updateCacheSize(try pageCache.maintain(maximumAge: policy == .oneDay ? 86_400 : nil)) }
+        catch { lastError = "部分阅读缓存无法清除：\(error.localizedDescription)" }
     }
 
     private func startWorker() {
@@ -360,7 +383,7 @@ final class DownloadStore: ObservableObject {
         if let imageLoader { data = try await imageLoader(page, baseURL) }
         else { data = try await KomiicAPI(baseURL: baseURL, session: session).imageData(for: page) }
         try Task.checkCancellation()
-        guard !data.isEmpty, UIImage(data: data) != nil else { throw ImageStorageError.invalidImage }
+        try await ImageDecoding.validate(data)
         return data
     }
 
@@ -392,12 +415,9 @@ final class DownloadStore: ObservableObject {
     private static func fileName(_ value: String) -> String { SHA256.hash(data: Data(value.utf8)).map { String(format: "%02x", $0) }.joined() }
     private static func byteSize(_ url: URL) -> Int64 { ((try? FileManager.default.attributesOfItem(atPath: url.path)[.size]) as? NSNumber)?.int64Value ?? 0 }
 
-    private func updateCacheSize() {
-        guard let enumerator = fileManager.enumerator(at: cacheDirectory, includingPropertiesForKeys: [.isRegularFileKey]) else { cacheBytes = 0; return }
-        var size: Int64 = 0
-        for case let url as URL in enumerator {
-            if (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true { size += Self.byteSize(url) }
-        }
-        cacheBytes = size
+    private func updateCacheSize(_ snapshot: PageImageDiskCache.Snapshot) {
+        guard snapshot.revision >= cacheRevision else { return }
+        cacheRevision = snapshot.revision
+        if cacheBytes != snapshot.bytes { cacheBytes = snapshot.bytes }
     }
 }

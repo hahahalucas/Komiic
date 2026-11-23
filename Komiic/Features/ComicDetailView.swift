@@ -169,9 +169,7 @@ struct ComicDetailView: View {
         if chapters.isEmpty { chapters = downloads.items.filter { $0.comic.id == comic.id }.map(\.chapter) }
         do {
             let api = KomiicAPI(mode: settings.contentMode)
-            async let comicResult = api.comic(id: comic.id)
-            async let chapterResult = api.chapters(comicID: comic.id)
-            let results = try await (comicResult, chapterResult)
+            let results = try await api.comicDetails(id: comic.id)
             try Task.checkCancellation()
             detail = results.0; chapters = results.1
         } catch is CancellationError {

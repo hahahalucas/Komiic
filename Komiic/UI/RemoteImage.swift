@@ -1,18 +1,18 @@
 import SwiftUI
 import UIKit
-import ImageIO
 
 /// Covers are public assets: reuse downloads and decoded thumbnails across every tab.
 @MainActor
-private final class CoverImageLoader {
+final class CoverImageLoader {
     static let shared = CoverImageLoader()
     private let cache = NSCache<NSURL, UIImage>()
     private var requests: [URL: Task<UIImage, Error>] = [:]
     private let session: URLSession
 
-    private init() {
+    init(session: URLSession? = nil) {
         cache.totalCostLimit = 64 * 1_024 * 1_024
         cache.countLimit = 160
+        if let session { self.session = session; return }
         let configuration = URLSessionConfiguration.default
         configuration.httpShouldSetCookies = false
         configuration.httpCookieStorage = nil
@@ -33,14 +33,10 @@ private final class CoverImageLoader {
             request.httpShouldHandleCookies = false
             request.setValue("https://komiic.cc/", forHTTPHeaderField: "Referer")
             let (data, response) = try await session.data(for: request)
-            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
-                  let source = CGImageSourceCreateWithData(data as CFData, nil),
-                  let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, [
-                    kCGImageSourceCreateThumbnailFromImageAlways: true,
-                    kCGImageSourceThumbnailMaxPixelSize: 640,
-                    kCGImageSourceCreateThumbnailWithTransform: true
-                  ] as CFDictionary) else { throw URLError(.cannotDecodeContentData) }
-            return UIImage(cgImage: thumbnail)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                throw URLError(.badServerResponse)
+            }
+            return try await ImageDecoding.image(from: data, maximumPixelSize: 640)
         }
         requests[url] = task
         defer { requests[url] = nil }
@@ -50,7 +46,7 @@ private final class CoverImageLoader {
     }
 }
 
-/// Uses the same cookie store as the API, including for protected chapter images.
+/// Public covers are cached without sending account cookies to their CDN.
 struct RemoteImage: View {
     let url: URL?
     var aspectRatio: CGFloat? = nil
@@ -86,8 +82,9 @@ struct RemoteImage: View {
         guard let url else { return }
         do {
             if url.isFileURL {
-                let data = try Data(contentsOf: url)
-                guard let decoded = UIImage(data: data) else { throw URLError(.cannotDecodeContentData) }
+                guard let data = await ImageDecoding.read(from: url) else { throw URLError(.cannotDecodeContentData) }
+                let decoded = try await ImageDecoding.image(from: data, maximumPixelSize: 640)
+                try Task.checkCancellation()
                 uiImage = decoded
                 return
             }

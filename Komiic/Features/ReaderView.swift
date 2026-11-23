@@ -359,6 +359,7 @@ struct ReaderView: View {
     }
     private func saveProgress() {
         guard !pages.isEmpty else { return }
+        downloads.prioritizeReading(chapterID: currentChapter.id, pageIndex: currentPage)
         library.recordProgress(comic: comic, chapter: currentChapter, page: currentPage, totalPages: pages.count, mode: readingContentMode)
     }
     private func toggleControls() {
@@ -436,7 +437,8 @@ private struct ReaderPageImage: View {
                 let data = try await downloads.imageData(page: page, chapterID: chapterID, baseURL: baseURL,
                                                         cachePolicy: settings.cachePolicy, allowNetwork: allowNetwork)
                 try Task.checkCancellation()
-                guard let decoded = UIImage(data: data) else { throw URLError(.cannotDecodeContentData) }
+                let decoded = try await ImageDecoding.image(from: data)
+                try Task.checkCancellation()
                 image = decoded
             } catch is CancellationError {
             } catch let urlError as URLError where urlError.code == .cancelled {
