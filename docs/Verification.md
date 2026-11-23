@@ -4,7 +4,19 @@
 
 阅读器持续隐藏系统状态栏，显示控制条不会重新显示时间、电量或 Wi-Fi；控制条及按键位置保持 0.5.0 原样。底部在线阅读/自动缓存提示行已删除。
 
-2026-11-23（Asia/Shanghai）本地检查通过：`python scripts/verify_project.py --require-swift-parser`、`git diff --check`，38 个 Swift 文件无语法错误。新增 6 项 XCTest，覆盖整话缓存、并发请求合并、失败重试、取消加载、清理期间的旧请求及离线下载复用。Xcode 编译、iPhone / iPad XCTest 和 0.6.0 IPA 尚待云端结果；以下 0.5.0 记录仅属于历史版本。
+2026-11-23（Asia/Shanghai）本地检查通过：`python scripts/verify_project.py --require-swift-parser`、`git diff --check`，38 个 Swift 文件无语法错误。新增 6 项 XCTest，覆盖整话缓存、并发请求合并、失败重试、取消加载、清理期间的旧请求及离线下载复用。
+
+[完整云端构建 45184721681](https://github.com/hahahalucas/Komiic/actions/runs/45184721681)成功；Xcode 26.6 / iOS SDK 26.5 的设备 Release 编译与 IPA 校验通过。iPhone 和 iPad 各 83 项 XCTest 全部通过，共 166 项、零失败，两次 `TEST SUCCEEDED` 及一次设备版 `BUILD SUCCEEDED` 均有日志。
+
+- 源码基于已验证的 0.5.0 提交 `ae33bc55db285059038b9ee8afae908a1ec6afc6`，仅修改 8 个发布相关文件。
+- 构建分支为 [`codex/komiic-0.6.0`](https://github.com/hahahalucas/Komiic/tree/codex/komiic-0.6.0)，构建提交为 [`00c6ff0301a5acaa3da3843ad599d38f22439509`](https://github.com/hahahalucas/Komiic/commit/00c6ff0301a5acaa3da3843ad599d38f22439509)。
+- [下载 0.6.0 IPA 及完整验证资料](https://github.com/hahahalucas/Komiic/actions/runs/45184721681/artifacts/14824662819)，包括 IPA、两份 XCTest 结果、两种设备的首页截图、设备编译日志及 IPA 检查报告。Artifact 保留至北京时间 2026-11-30 21:55:42。
+- 完整产物 ZIP 为 139,398,065 字节，SHA-256：`974be23639f1ac3eabd6a94f40b89651fc841cca6f69a5db8abf402874ffd58f`。
+- 交付文件为项目根目录的 `Komiic-0.6.0-iPhone-iPad-unsigned.ipa`，1,294,042 字节。本机再次校验版本 0.6.0、build 6、arm64 iOS 设备代码、iPhone / iPad 支持、最低 iOS 17、SwiftUI 链接与未签名结构，均通过。
+- IPA SHA-256：`28bfab59da9d2281704ca09ecae45b4383a9d29284c6ae744de518ace08d0d3e`，与云端报告一致；安装前需自签。完整构建、测试及包信息见 [`v0.6.0-build.json`](v0.6.0-build.json)，本机验证资料位于 `build/v0.6.0-verified-artifacts/`。
+- 模拟器截图为首页；阅读器状态栏与关闭按钮的实际触控、横竖屏交互及真机安装尚未人工验收。
+
+以下 0.5.0 及更早记录仅属于历史版本。
 
 ---
 

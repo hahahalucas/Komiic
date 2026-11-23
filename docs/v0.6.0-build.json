@@ -1,0 +1,69 @@
+{
+  "version": "0.6.0",
+  "build": 6,
+  "baseCommit": "ae33bc55db285059038b9ee8afae908a1ec6afc6",
+  "appSourceCommit": "00c6ff0301a5acaa3da3843ad599d38f22439509",
+  "sourceTree": "126c7d214b9d32aadd5ce3392bad4a78b0da4162",
+  "branch": "codex/komiic-0.6.0",
+  "workflowRun": "https://github.com/hahahalucas/Komiic/actions/runs/45184721681",
+  "conclusion": "success",
+  "artifactURL": "https://github.com/hahahalucas/Komiic/actions/runs/45184721681/artifacts/14824662819",
+  "artifactID": 14824662819,
+  "artifactZIPBytes": 139398065,
+  "artifactZIPSHA256": "974be23639f1ac3eabd6a94f40b89651fc841cca6f69a5db8abf402874ffd58f",
+  "deliveryFile": "Komiic-0.6.0-iPhone-iPad-unsigned.ipa",
+  "ipaBytes": 1294042,
+  "ipa": {
+    "bundleIdentifier": "com.example.Komiic",
+    "version": "0.6.0",
+    "deviceFamilies": [
+      "iPhone",
+      "iPad"
+    ],
+    "minimumOS": "17.0",
+    "sdk": "iphoneos26.5",
+    "executableBytes": 5741720,
+    "executableSHA256": "c00824a254c066aa745aa66578c5f6068dd48ec83bd838a4988ddea0386948bb",
+    "macho": [
+      {
+        "architecture": "arm64",
+        "platform": 2,
+        "minimumOS": "17.0.0",
+        "sdk": "26.5.0",
+        "swiftUILinked": true,
+        "codeSignatureCommand": false
+      }
+    ],
+    "signing": "unsigned",
+    "signatureStructurePresent": false,
+    "appleSignatureTrustCheckedByThisScript": false,
+    "installation": "Requires your own authorized signing before installation.",
+    "checks": [
+      "IPA layout",
+      "bundle plist",
+      "iPhone+iPad families",
+      "arm64 executable",
+      "iOS device platform",
+      "iOS SDK 26+",
+      "SwiftUI linkage",
+      "executable permission",
+      "signing structure"
+    ],
+    "ipaSHA256": "28bfab59da9d2281704ca09ecae45b4383a9d29284c6ae744de518ace08d0d3e"
+  },
+  "tests": {
+    "countPerDevice": 83,
+    "total": 166,
+    "failures": 0,
+    "status": "passed",
+    "devices": [
+      "iPhone",
+      "iPad"
+    ]
+  },
+  "controlsPosition": "unchanged from 0.5.0",
+  "physicalDeviceAcceptance": "Not performed; simulator screenshots show the home screen.",
+  "localIPAVerification": "passed",
+  "artifactDigestVerified": true,
+  "appSourceMatchesWorkspace": true
+}

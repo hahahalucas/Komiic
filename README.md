@@ -50,9 +50,9 @@
 
 ## 验证与构建
 
-0.6.0 的本地工程结构及 Swift 语法检查通过，新增 6 项整话预加载回归测试；Xcode 编译、XCTest 及 IPA 状态见[验证记录](docs/Verification.md)。
+0.6.0 的本地工程结构及 Swift 语法检查、Xcode 26.6 / iOS SDK 26.5 设备 Release 编译及 IPA 校验通过；iPhone 和 iPad 各 83 项 XCTest 通过，零失败，包含新增的 6 项整话预加载回归测试。详见[验证记录](docs/Verification.md)。
 
-[上一版本 0.5.0 IPA 产物](https://github.com/hahahalucas/Komiic/actions/runs/45043225501/artifacts/14761494948)不包含本次整话预加载更新。
+[下载 0.6.0 IPA 及完整验证资料](https://github.com/hahahalucas/Komiic/actions/runs/45184721681/artifacts/14824662819)，包含整话预加载、隐藏阅读器状态栏和删除底部提示行的更新。按键位置保持原样；IPA 安装前需自签。
 
 本地环境为 Windows，可执行工程结构和 Swift 语法检查：
 
