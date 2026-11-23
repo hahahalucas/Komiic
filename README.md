@@ -1,8 +1,17 @@
-# Komiic for iOS 0.5.0
+# Komiic for iOS 0.6.0
 
-基于 v3.0 升级的原生 SwiftUI 漫画客户端，当前版本 **0.5.0（build 5）**，支持 iPhone / iPad、iOS 17 及以上。使用 Apple 系统框架，无第三方运行时依赖。iOS 26 使用系统 Liquid Glass 导航及阅读控制条，旧系统保留兼容外观。
+基于 v3.0 升级的原生 SwiftUI 漫画客户端，当前版本 **0.6.0（build 6）**，支持 iPhone / iPad、iOS 17 及以上。使用 Apple 系统框架，无第三方运行时依赖。iOS 26 使用系统 Liquid Glass 导航及阅读控制条，旧系统保留兼容外观。
 
 ## 本次更新
+
+- 打开一话后自动预加载整话图片，优先当前阅读位置及后续页；首屏先显示，其余图片在后台加载，不依赖翻页或滚动触发。
+- 最多同时预加载 3 页，整话保留压缩图片缓存，只解码需要显示的页面，适用于滚动、翻页及 iPad 双页阅读。
+- 预加载、正在阅读的页面及离线下载共用同一图片请求，已缓存的页面不重复下载；单页失败不阻塞后续页面，仍可单独重试。
+- 切换章节或退出阅读时取消预加载；选择「看完后」清理缓存时，未完成的旧请求不会重新创建已清理的缓存。
+- 阅读器始终隐藏时间、电量、Wi-Fi 等系统状态栏，点击画面只切换阅读控制条，按键位置保持原样。
+- 删除底部控制条的在线阅读/自动缓存提示行。
+
+## 0.5.0 已有功能
 
 - 登录后书柜及屏蔽列表从官网同步，书柜创建、改名、删除、移入/移出漫画、屏蔽/解除均写回官网；失败操作按账号及分区持久化等待重试。
 - 首页和账号资料在首次进入后保留；切换标签、返回页面、回到前台不会重新读取。下拉刷新主动获取官网最新数据。
@@ -41,7 +50,9 @@
 
 ## 验证与构建
 
-[下载 0.5.0 IPA 产物](https://github.com/hahahalucas/Komiic/actions/runs/45043225501/artifacts/14761494948)：ZIP 内的 `Komiic-iPhone-iPad-unsigned.ipa` 是本版本未签名安装包，支持 iPhone / iPad，安装前需自签。设备 Release 编译与包结构校验已通过，同一 App 源码在 iPhone / iPad 各通过 77 项 XCTest、零失败。
+0.6.0 的本地工程结构及 Swift 语法检查通过，新增 6 项整话预加载回归测试；Xcode 编译、XCTest 及 IPA 状态见[验证记录](docs/Verification.md)。
+
+[上一版本 0.5.0 IPA 产物](https://github.com/hahahalucas/Komiic/actions/runs/45043225501/artifacts/14761494948)不包含本次整话预加载更新。
 
 本地环境为 Windows，可执行工程结构和 Swift 语法检查：
 
@@ -53,7 +64,7 @@ git diff --check
 
 2026-11-22 已实际验证两个官网域名的四类首页接口，八次请求均返回 HTTP 200，且内容类型分别为 REGULAR / H_MANGA，见 [0.4.0 接口记录](docs/v0.4.0-api.json)。登录后的资料读取、偏好与同步写入仍需真实账号验收。
 
-Xcode 编译、XCTest、模拟器界面及真机验证需在 Mac 完成；本地语法检查不能代替这些步骤。0.5.0 的云端编译、测试及 IPA 状态见验证记录。具体状态和验收步骤见 [验证记录](docs/Verification.md)，构建及签名方法见 [IPA 说明](docs/IPA.md)。
+Xcode 编译、XCTest、模拟器界面及真机验证需在 Mac 完成；本地语法检查不能代替这些步骤。0.6.0 的云端编译、测试及 IPA 状态见 [验证记录](docs/Verification.md)，构建及签名方法见 [IPA 说明](docs/IPA.md)。
 
 ```sh
 bash scripts/build_ipa.sh --unsigned

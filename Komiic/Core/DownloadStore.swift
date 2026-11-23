@@ -62,6 +62,17 @@ final class DownloadStore: ObservableObject {
     private var queue: [String] = []
     private var worker: Task<Void, Never>?
     private var currentDownload: Task<Void, Error>?
+    private struct ImageRequestKey: Hashable {
+        let chapterID: String
+        let page: ComicPage
+        let baseURL: URL
+    }
+    private struct PendingImageRequest {
+        let task: Task<Data, Error>
+        var readers: Set<UUID>
+    }
+    private var imageRequests: [ImageRequestKey: PendingImageRequest] = [:]
+    private var cacheGenerations: [String: UUID] = [:]
 
     var storageBytes: Int64 { items.reduce(0) { $0 + $1.byteCount } }
     var availableBytes: Int64 {
@@ -190,6 +201,7 @@ final class DownloadStore: ObservableObject {
     /// Reads a permanent page first, then temporary cache, then the official server.
     /// Offline reading never requires the network when all chapter pages are present.
     func imageData(page: ComicPage, chapterID: String, baseURL: URL, cachePolicy: CachePolicy, allowNetwork: Bool = true) async throws -> Data {
+        try Task.checkCancellation()
         if let url = localImageURL(chapterID: chapterID, pageID: page.id), let data = try? Data(contentsOf: url), UIImage(data: data) != nil { return data }
         let cachedURL = pageFile(in: cacheChapterDirectory(chapterID), pageID: page.id)
         if let data = try? Data(contentsOf: cachedURL), UIImage(data: data) != nil {
@@ -197,15 +209,82 @@ final class DownloadStore: ObservableObject {
             if cachePolicy != .oneDay || Date().timeIntervalSince(modified) < 86_400 { return data }
         }
         guard allowNetwork else { throw ImageStorageError.missingOfflinePage }
-        let data = try await fetchImage(page: page, baseURL: baseURL)
-        try Task.checkCancellation()
-        try fileManager.createDirectory(at: cachedURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try data.write(to: cachedURL, options: .atomic)
-        updateCacheSize()
-        return data
+        let key = ImageRequestKey(chapterID: chapterID, page: page, baseURL: baseURL)
+        let readerID = UUID()
+        let task: Task<Data, Error>
+        if var pending = imageRequests[key] {
+            pending.readers.insert(readerID)
+            imageRequests[key] = pending
+            task = pending.task
+        } else {
+            let generation = cacheGenerations[chapterID] ?? UUID()
+            cacheGenerations[chapterID] = generation
+            task = Task {
+                let data = try await fetchImage(page: page, baseURL: baseURL)
+                try Task.checkCancellation()
+                // A page already in flight must not recreate a cleared chapter cache.
+                if cacheGenerations[chapterID] == generation {
+                    try fileManager.createDirectory(at: cachedURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+                    try data.write(to: cachedURL, options: .atomic)
+                    updateCacheSize()
+                }
+                return data
+            }
+            imageRequests[key] = PendingImageRequest(task: task, readers: [readerID])
+        }
+        return try await withTaskCancellationHandler {
+            defer { releaseImageRequest(key, readerID: readerID) }
+            let data = try await task.value
+            try Task.checkCancellation()
+            return data
+        } onCancel: {
+            Task { @MainActor in self.releaseImageRequest(key, readerID: readerID) }
+        }
+    }
+
+    /// Fetch the entire chapter independently of which views SwiftUI has created.
+    /// Only compressed files are cached; visible page views decode their own images.
+    func prefetchChapter(pages: [ComicPage], chapterID: String, baseURL: URL,
+                         startingAt pageIndex: Int = 0, cachePolicy: CachePolicy) async {
+        guard !pages.isEmpty, !Task.isCancelled else { return }
+        let generation = cacheGenerations[chapterID] ?? UUID()
+        cacheGenerations[chapterID] = generation
+        let start = min(max(0, pageIndex), pages.count - 1)
+        let orderedPages = Array(pages[start...]) + Array(pages[..<start])
+        await withTaskGroup(of: Void.self) { group in
+            var remaining = orderedPages.makeIterator()
+            // Leave connection capacity for the currently visible page and API calls.
+            for _ in 0..<3 {
+                guard !Task.isCancelled, let page = remaining.next() else { break }
+                group.addTask { @MainActor in
+                    guard self.cacheGenerations[chapterID] == generation else { return }
+                    _ = try? await self.imageData(page: page, chapterID: chapterID, baseURL: baseURL, cachePolicy: cachePolicy)
+                }
+            }
+            for await _ in group {
+                guard !Task.isCancelled, cacheGenerations[chapterID] == generation else { group.cancelAll(); break }
+                guard let page = remaining.next() else { continue }
+                group.addTask { @MainActor in
+                    guard self.cacheGenerations[chapterID] == generation else { return }
+                    _ = try? await self.imageData(page: page, chapterID: chapterID, baseURL: baseURL, cachePolicy: cachePolicy)
+                }
+            }
+        }
+    }
+
+    private func releaseImageRequest(_ key: ImageRequestKey, readerID: UUID) {
+        guard var pending = imageRequests[key], pending.readers.remove(readerID) != nil else { return }
+        if pending.readers.isEmpty {
+            imageRequests.removeValue(forKey: key)
+            pending.task.cancel()
+        } else {
+            imageRequests[key] = pending
+        }
     }
 
     func clearCache(chapterID: String? = nil) {
+        if let chapterID { cacheGenerations.removeValue(forKey: chapterID) }
+        else { cacheGenerations.removeAll() }
         let target = chapterID.map(cacheChapterDirectory) ?? cacheDirectory
         do {
             if fileManager.fileExists(atPath: target.path) { try fileManager.removeItem(at: target) }
@@ -266,10 +345,7 @@ final class DownloadStore: ObservableObject {
             guard let index = items.firstIndex(where: { $0.id == id }) else { throw CancellationError() }
             let destination = pageFile(in: chapterDirectory(id), pageID: page.id)
             if items[index].downloadedPageIDs.contains(page.id), Self.byteSize(destination) > 0 { continue }
-            let cachedURL = pageFile(in: cacheChapterDirectory(id), pageID: page.id)
-            let data: Data
-            if let cached = try? Data(contentsOf: cachedURL), UIImage(data: cached) != nil { data = cached }
-            else { data = try await fetchImage(page: page, baseURL: initial.sourceURL) }
+            let data = try await imageData(page: page, chapterID: id, baseURL: initial.sourceURL, cachePolicy: .never)
             try Task.checkCancellation()
             guard let currentIndex = items.firstIndex(where: { $0.id == id }) else { throw CancellationError() }
             try data.write(to: destination, options: .atomic)

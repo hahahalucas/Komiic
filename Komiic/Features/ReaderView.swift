@@ -115,7 +115,7 @@ struct ReaderView: View {
                     }
                 }
             }
-            .statusBarHidden(!controls)
+            .statusBarHidden(true)
             .preferredColorScheme(settings.einkMode.enabled ? .light : .dark)
             .onAppear { updateSpread(size: geometry.size) }
             .onChange(of: geometry.size) { _, size in updateSpread(size: size) }
@@ -124,6 +124,10 @@ struct ReaderView: View {
         .task(id: "\(currentChapter.id):\(retry)") {
             if readingContentMode == nil { readingContentMode = settings.contentMode }
             await loadPages()
+            guard !Task.isCancelled, error == nil, !isOffline else { return }
+            await downloads.prefetchChapter(pages: pages, chapterID: currentChapter.id,
+                baseURL: KomiicAPI(mode: readingContentMode ?? settings.contentMode).baseURL,
+                startingAt: currentPage, cachePolicy: settings.cachePolicy)
         }
         .task { await loadDirectory() }
         .onDisappear {
@@ -318,9 +322,6 @@ struct ReaderView: View {
                 .disabled(spreadLayout.next(from: currentPage) == spreadLayout.start(for: currentPage))
                 .accessibilityLabel("下一页")
             }
-
-            Label(isOffline ? "离线阅读" : "在线阅读 · 自动缓存", systemImage: isOffline ? "checkmark.circle" : "network")
-                .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
         }
         .padding(.horizontal, 20)
         .padding(.top, 12)
