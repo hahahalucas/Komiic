@@ -22,7 +22,7 @@ final class CoverImageLoader {
         configuration.timeoutIntervalForRequest = 20
         configuration.timeoutIntervalForResource = 45
         configuration.waitsForConnectivity = false
-        session = URLSession(configuration: configuration)
+        self.session = URLSession(configuration: configuration)
     }
 
     func image(for url: URL) async throws -> UIImage {

@@ -263,7 +263,7 @@ final class DownloadStore: ObservableObject {
         readingPositions[chapterID] = start
         await withTaskGroup(of: Bool.self) { group in
             var remaining = Set(pages.indices)
-            func nextPage() -> ComicPage? {
+            @MainActor func nextPage() -> ComicPage? {
                 let position = min(max(0, readingPositions[chapterID] ?? start), pages.count - 1)
                 guard let index = remaining.min(by: {
                     ($0 - position + pages.count) % pages.count < ($1 - position + pages.count) % pages.count
@@ -338,7 +338,7 @@ final class DownloadStore: ObservableObject {
                 guard let index = items.firstIndex(where: { $0.id == id }) else { continue }
                 items[index].status = .downloading
                 activeID = id
-                let transfer = Task { try await fetchChapter(id: id) }
+                let transfer = Task { try await self.fetchChapter(id: id) }
                 currentDownload = transfer
                 do {
                     try await transfer.value
