@@ -9,7 +9,13 @@
 
 新增 5 项 UIKit XCTest，覆盖缩小下限、放大拖动与还原后的滚动、普通更新保持缩放、换页/旋转/换图重置，以及嵌套滚动手势配置。现有 95 项保留，共 100 项/设备。
 
-Windows 本地工程结构及严格 Swift 语法检查通过（43 个 Swift 文件）。iPhone/iPad XCTest、Xcode 设备编译和 IPA 校验待云端执行；本节不会沿用 0.7.0 的结果作为本版验证。
+Windows 本地工程结构及严格 Swift 语法检查通过（43 个 Swift 文件）。2026-11-26（Asia/Shanghai）[完整云端构建 45655410195](https://github.com/hahahalucas/Komiic/actions/runs/45655410195)成功：Xcode 26.6 / iOS SDK 26.5 的设备 Release 编译及 IPA 校验通过，iPhone、iPad 各 **100 项 XCTest** 全部通过，共 **200 项、零失败**。五项新增缩放测试在两种设备上均通过，日志分别包含两次 `TEST SUCCEEDED` 和一次设备版 `BUILD SUCCEEDED`。
+
+- 基于 0.7.0 最终记录提交 `6baa1d71d1a598a4bc35f2564a96b5a6811756a7`，构建分支为 [`codex/komiic-0.8.0`](https://github.com/hahahalucas/Komiic/tree/codex/komiic-0.8.0)，实际 App 构建提交为 [`edb576bb508fd1b9fab3f4b6911724ce7bfc2f48`](https://github.com/hahahalucas/Komiic/commit/edb576bb508fd1b9fab3f4b6911724ce7bfc2f48)。上传时全部 43 个 Swift 源文件的 Git blob 散列与本地工作区一致。
+- [下载 0.8.0 IPA 及完整验证资料](https://github.com/hahahalucas/Komiic/actions/runs/45655410195/artifacts/15043018905)，包含 `Komiic-iPhone-iPad-unsigned.ipa`、两份 XCTest 结果、iPhone/iPad 首页截图和构建日志。ZIP 共 129,933,354 字节，GitHub 提供的 ZIP SHA-256 为 `41b400f7a0352e91189a1be9f3568d2edda9d15d42ee469c3d0590da64ac809c`，保留至北京时间 2026-12-03 00:53:18。
+- 云端直接检查 IPA 的版本为 `0.8.0`、arm64 iOS 设备代码、iPhone/iPad 支持、最低系统 17.0、iOS SDK 26.5，且无签名结构。IPA SHA-256：`5886494138e4c694b10e45a9c30e9b46420b07fec76e6c89a6c5f9c7dbc9afba`。安装前需自签。
+- 普通及 H 两个官网的首页、合并详情与公开封面共 6 项检查全部通过，见 [0.8.0 接口记录](v0.8.0-api.json)；记录保留原检查脚本的版本字段，并用 `appVersion` 标注本次 App 版本。结构化构建证据见 [0.8.0 构建记录](v0.8.0-build.json)。
+- 本地执行环境在源码上传后断开，因此未进行本机二次解包校验或独立重算 Artifact ZIP 散列；上述 IPA 检查由云端构建脚本执行。未进行真机双指手势和导航的人工验收。
 
 交互验收：分别在纵向滚动、横向翻页和 iPad 横屏双页模式下双指放大、平移并收拢至原比例；确认不可继续缩小，放大拖动不跳页/跳话，还原后滚动正常。进入书柜再打开漫画应直接显示漫画详情，返回一次回到同一书柜；最近阅读先进入漫画主页，再点击「继续阅读」恢复原位置。
 

@@ -65,9 +65,9 @@
 
 ## 验证与构建
 
-0.8.0 的本地工程结构及 Swift 语法检查通过，43 个 Swift 文件无语法错误；本版新增 5 项 UIKit 缩放测试，连同既有测试共 100 项/设备。iPhone/iPad XCTest、设备 Release 编译和 IPA 校验等待云端执行，完整结果见[验证记录](docs/Verification.md)。
+0.8.0 的本地工程结构及 Swift 语法检查通过，43 个 Swift 文件无语法错误；Xcode 26.6 / iOS SDK 26.5 的设备 Release 编译及 IPA 校验通过。iPhone、iPad 各 100 项 XCTest 全部通过，共 200 项、零失败，包含新增的 5 项 UIKit 缩放测试。完整结果见[验证记录](docs/Verification.md)。
 
-历史版本：[0.7.0 IPA 及完整验证资料](https://github.com/hahahalucas/Komiic/actions/runs/45208173469/artifacts/14835749218)。0.8.0 交付文件将在本版构建及校验通过后提供。构建和签名说明见[构建说明](docs/IPA.md)。
+[下载 0.8.0 IPA 及完整验证资料](https://github.com/hahahalucas/Komiic/actions/runs/45655410195/artifacts/15043018905)。解压后使用 `Komiic-iPhone-iPad-unsigned.ipa`，包内版本为 0.8.0，支持 iPhone / iPad，安装前需自签。构建和签名说明见[构建说明](docs/IPA.md)。
 
 本地环境为 Windows，可执行工程结构和 Swift 语法检查：
 

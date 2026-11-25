@@ -6,6 +6,8 @@ iPad 不强制全屏，声明全部四个方向以支持系统多任务与可变
 
 当前源码为 **0.8.0（build 8）**，新增阅读图片放大（最小原始比例）、修复书柜导航，并将最近阅读点击改为进入漫画主页。设备版编译和本次 XCTest 状态见[验证记录](Verification.md)。
 
+[0.8.0 完整云端构建](https://github.com/hahahalucas/Komiic/actions/runs/45655410195)已成功：iPhone、iPad 各 100 项 XCTest 通过，共 200 项、零失败；Xcode 26.6 / iOS SDK 26.5 设备 Release 编译及 IPA 校验通过。[下载产物](https://github.com/hahahalucas/Komiic/actions/runs/45655410195/artifacts/15043018905)并解压，使用其中的 `Komiic-iPhone-iPad-unsigned.ipa`。包内版本为 0.8.0，同一份包支持 iPhone/iPad，最低 iOS/iPadOS 17，安装前需自签。IPA SHA-256：`5886494138e4c694b10e45a9c30e9b46420b07fec76e6c89a6c5f9c7dbc9afba`。完整证据见[验证记录](Verification.md)。
+
 以下为 **0.7.0 历史构建记录**。
 
 [0.7.0 完整云端构建](https://github.com/hahahalucas/Komiic/actions/runs/45208173469)已成功：iPhone、iPad 各 95 项 XCTest 通过，共 190 项、零失败；Xcode 26.6 / iOS SDK 26.5 的设备 Release 编译与 IPA 校验通过。[下载产物](https://github.com/hahahalucas/Komiic/actions/runs/45208173469/artifacts/14835749218)包含真实设备 IPA、测试结果、两种设备的首页截图和构建日志。项目根目录已保存 `Komiic-0.7.0-iPhone-iPad-unsigned.ipa`，本地再次核对版本 0.7.0、build 7、arm64 iOS 设备代码、iPhone/iPad 支持及未签名结构通过。IPA SHA-256：`67b0939a743c8ca6c256d6844d46428f1b80fd8f06eab190feb945e84c0139ac`；安装前需自签。完整证据见[验证记录](Verification.md)。

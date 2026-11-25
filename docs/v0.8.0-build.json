@@ -1,0 +1,75 @@
+{
+  "version": "0.8.0",
+  "build": 8,
+  "baseCommit": "6baa1d71d1a598a4bc35f2564a96b5a6811756a7",
+  "appSourceCommit": "edb576bb508fd1b9fab3f4b6911724ce7bfc2f48",
+  "sourceTree": "a4b449214f3e8b61068dd2a9d669d8b14bca78cf",
+  "branch": "codex/komiic-0.8.0",
+  "workflowRun": "https://github.com/hahahalucas/Komiic/actions/runs/45655410195",
+  "conclusion": "success",
+  "artifactURL": "https://github.com/hahahalucas/Komiic/actions/runs/45655410195/artifacts/15043018905",
+  "artifactID": 15043018905,
+  "artifactZIPBytes": 129933354,
+  "artifactDigestFromGitHub": "sha256:41b400f7a0352e91189a1be9f3568d2edda9d15d42ee469c3d0590da64ac809c",
+  "artifactExpiresAt": "2026-12-02T16:53:18Z",
+  "ipaFileInArtifact": "Komiic-iPhone-iPad-unsigned.ipa",
+  "ipa": {
+    "bundleIdentifier": "com.example.Komiic",
+    "version": "0.8.0",
+    "deviceFamilies": [
+      "iPhone",
+      "iPad"
+    ],
+    "minimumOS": "17.0",
+    "sdk": "iphoneos26.5",
+    "executableBytes": 5896376,
+    "executableSHA256": "b4dbe86ae4e1ab49323b4a518d051ca09ec0439dc7313ce4d0083815d4f61d5b",
+    "macho": [
+      {
+        "architecture": "arm64",
+        "platform": 2,
+        "minimumOS": "17.0.0",
+        "sdk": "26.5.0",
+        "swiftUILinked": true,
+        "codeSignatureCommand": false
+      }
+    ],
+    "signing": "unsigned",
+    "signatureStructurePresent": false,
+    "appleSignatureTrustCheckedByThisScript": false,
+    "installation": "Requires your own authorized signing before installation.",
+    "checks": [
+      "IPA layout",
+      "bundle plist",
+      "iPhone+iPad families",
+      "arm64 executable",
+      "iOS device platform",
+      "iOS SDK 26+",
+      "SwiftUI linkage",
+      "executable permission",
+      "signing structure"
+    ],
+    "ipaSHA256": "5886494138e4c694b10e45a9c30e9b46420b07fec76e6c89a6c5f9c7dbc9afba"
+  },
+  "tests": {
+    "countPerDevice": 100,
+    "total": 200,
+    "failures": 0,
+    "status": "passed",
+    "newTestsPerDevice": 5,
+    "devices": [
+      "iPhone",
+      "iPad"
+    ]
+  },
+  "sourceFilesMatchWorkspaceAtUpload": true,
+  "swiftSourceFileCount": 43,
+  "publicAPIVerification": {
+    "cloudChecks": 6,
+    "status": "passed",
+    "cloudArtifactID": 15043305180
+  },
+  "localIPAVerification": "Not run: local execution environment disconnected after source upload.",
+  "artifactDigestIndependentlyRecomputed": false,
+  "physicalDeviceAcceptance": "Not performed; XCTest verifies UIKit zoom behavior, and manual gesture/navigation acceptance remains a physical-device check."
+}
