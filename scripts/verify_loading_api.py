@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check v0.7.0's combined detail query and public covers without account cookies.
+"""Check the current build's combined detail query and public covers without account cookies.
 
 Timings describe this runner and network only; they are not a device speed benchmark.
 No protected page images, image tickets, credentials, or mutations are requested.
@@ -10,12 +10,14 @@ import argparse
 from datetime import datetime, timezone
 import http.client
 import json
+import re
 from pathlib import Path
 import time
 from urllib.parse import urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
+APP_VERSION = re.search(r"MARKETING_VERSION\s*=\s*([0-9.]+);", (ROOT / "Komiic.xcodeproj/project.pbxproj").read_text(encoding="utf-8-sig")).group(1)
 
 
 def fields() -> str:
@@ -42,7 +44,7 @@ def query(connection, origin, operation, text, variables):
     body = json.dumps(dict(operationName=operation, query=text, variables=variables)).encode()
     connection.request("POST", "/api/query", body, {
         "Content-Type": "application/json", "Accept": "application/json",
-        "Origin": origin, "Referer": origin + "/", "User-Agent": "Komiic-Validation/0.7.0",
+        "Origin": origin, "Referer": origin + "/", "User-Agent": f"Komiic-Validation/{APP_VERSION}",
     })
     response = connection.getresponse()
     raw = response.read()
@@ -82,7 +84,7 @@ def check_origin(origin, content_mode):
         if parts.scheme != "https" or not (parts.hostname == "komiic.cc" or parts.hostname.endswith(".komiic.cc")):
             raise RuntimeError("Cover is not on the official HTTPS CDN")
         started = time.perf_counter()
-        request = Request(urlunsplit(parts), headers={"Referer": origin + "/", "User-Agent": "Komiic-Validation/0.7.0"})
+        request = Request(urlunsplit(parts), headers={"Referer": origin + "/", "User-Agent": f"Komiic-Validation/{APP_VERSION}"})
         # URLSession follows CDN redirects; validate the same path instead of treating
         # a regional CDN's redirect as a broken image.
         with urlopen(request, timeout=25) as response:
@@ -104,9 +106,9 @@ def check_origin(origin, content_mode):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output", type=Path, default=ROOT / "build/v0.7.0-loading-api.json")
+    parser.add_argument("--output", type=Path, default=ROOT / "build/loading-api.json")
     options = parser.parse_args()
-    report = {"version": "0.7.0", "checkedAtUTC": datetime.now(timezone.utc).isoformat(),
+    report = {"version": APP_VERSION, "checkedAtUTC": datetime.now(timezone.utc).isoformat(),
         "limitations": "Runner timings only; no device benchmark or authenticated session test.", "checks": []}
     try:
         for origin, mode in [("https://komiic.cc", "REGULAR"), ("https://h.komiic.cc", "H_MANGA")]:

@@ -30,6 +30,7 @@ private enum SearchRoute: Hashable {
 private enum MenuRoute: Hashable { case blocked, warnings }
 
 struct RootView: View {
+    @EnvironmentObject private var content: AppContentStore
     @EnvironmentObject private var library: LibraryStore
     @EnvironmentObject private var downloads: DownloadStore
     @EnvironmentObject private var settings: ReaderSettings
@@ -86,6 +87,11 @@ struct RootView: View {
             }
         }
         .onChange(of: scenePhase) { _, phase in
+            if phase == .background {
+                content.flushSnapshots()
+                library.flushSnapshots()
+                SessionCookieStore.shared.capture()
+            }
             if phase == .active {
                 Task { await library.retryPendingOfficialChanges() }
                 downloads.applyCachePolicy(settings.cachePolicy)

@@ -2,7 +2,7 @@ import Foundation
 import Combine
 import CryptoKit
 
-struct ReadingBookmark: Codable, Identifiable {
+struct ReadingBookmark: Codable, Identifiable, Sendable {
     var comic: Comic
     var chapter: Chapter
     /// A zero-based image index, shared with the reader and offline manifests.
@@ -11,7 +11,7 @@ struct ReadingBookmark: Codable, Identifiable {
     var id: String { "\(chapter.id):\(page)" }
 }
 
-struct ReadingProgress: Codable, Identifiable {
+struct ReadingProgress: Codable, Identifiable, Sendable {
     var comic: Comic
     var chapter: Chapter
     var page: Int
@@ -22,7 +22,7 @@ struct ReadingProgress: Codable, Identifiable {
     var isFinished: Bool { totalPages > 0 && page + 1 >= totalPages }
 }
 
-struct Bookshelf: Codable, Identifiable {
+struct Bookshelf: Codable, Identifiable, Sendable {
     var id: UUID = UUID()
     var name: String
     var comics: [Comic] = []
@@ -135,16 +135,23 @@ final class LibraryStore: ObservableObject {
     private var refreshTasks: [ComicContentMode: Task<Void, Never>] = [:]
     private var refreshTaskIDs: [ComicContentMode: UUID] = [:]
     private var collectionEdits: [ComicContentMode: [OfficialCollectionEdit]] = [:]
+    private let snapshotStore: AppSnapshotStore
+    private let sessionScope: (ComicContentMode) -> String?
+    private var snapshotScopes: [ComicContentMode: String] = [:]
+    private var observedSessionScopes: [ComicContentMode: String] = [:]
 
     var readComicCount: Int { Set(history.map { $0.comic.id }).count }
     var readChapterCount: Int { readChapterIDs.count }
     var pendingOfficialChangeCount: Int { pendingOfficialChanges.count }
 
     init(directoryURL: URL? = nil, initialMode: ComicContentMode = .general,
-         officialClient: OfficialLibraryClient = .live) {
+         officialClient: OfficialLibraryClient = .live,
+         sessionScope: @escaping (ComicContentMode) -> String? = { SessionCookieStore.shared.scope(for: $0) }) {
         activeMode = initialMode
         self.officialClient = officialClient
         let directory = directoryURL ?? URL.applicationSupportDirectory.appendingPathComponent("Komiic", isDirectory: true)
+        self.sessionScope = sessionScope
+        snapshotStore = AppSnapshotStore(directory: directory.appendingPathComponent("OfficialSnapshots", isDirectory: true))
         fileURL = directory.appendingPathComponent("library.json")
         do {
             try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -170,9 +177,36 @@ final class LibraryStore: ObservableObject {
                 lastError = "无法建立本机资料库：\(error.localizedDescription)"
             }
         }
+        restoreOfficialSnapshots()
+    }
+
+    private func restoreOfficialSnapshots() {
+        for mode in ComicContentMode.allCases {
+            let scope = sessionScope(mode)
+            observedSessionScopes[mode] = scope ?? "guest"
+            guard let scope,
+                  let saved = snapshotStore.load(CachedOfficialLibrary.self, key: "official:\(mode.rawValue):\(scope)") else { continue }
+            officialSnapshots[mode] = saved.snapshot
+            officialAccountIDs[mode] = saved.accountID
+            snapshotScopes[mode] = scope
+            loadedOfficialModes.insert(mode)
+        }
+        officialAccountID = officialAccountIDs[activeMode]
+        apply(partition(for: activeMode))
+    }
+
+    func synchronizeSessionScopes() {
+        for mode in ComicContentMode.allCases {
+            let scope = sessionScope(mode) ?? "guest"
+            guard observedSessionScopes[mode] != scope else { continue }
+            resetOfficialSession(mode: mode)
+            observedSessionScopes[mode] = scope
+        }
     }
 
     /// Switching replaces every visible collection together; each mode keeps its own archive.
+    func flushSnapshots() { snapshotStore.flush() }
+
     func selectMode(_ mode: ComicContentMode) {
         guard activeMode != mode else { return }
         if refreshTasks[activeMode] != nil {
@@ -382,6 +416,7 @@ final class LibraryStore: ObservableObject {
     /// Signed-in favorites/history use the account-scoped official snapshot and pending edits.
     /// Logging out restores the independent local archive without copying cloud records into it.
     func refreshOfficialLibrary(force: Bool = true) async {
+        synchronizeSessionScopes()
         let mode = activeMode
         if let running = refreshTasks[mode] { await running.value; return }
         guard force || !loadedOfficialModes.contains(mode) else { return }
@@ -395,9 +430,14 @@ final class LibraryStore: ObservableObject {
             refreshTasks[mode] = nil
             refreshTaskIDs[mode] = nil
         }
+        if activeMode == mode, !Task.isCancelled, !loadedOfficialModes.contains(mode), refreshTasks[mode] == nil {
+            await refreshOfficialLibrary(force: false)
+        }
     }
 
     private func performOfficialRefresh(mode: ComicContentMode) async {
+        let startingScope = sessionScope(mode)
+        let startingSessionGeneration = SessionCookieStore.shared.generation
         let refreshID = UUID()
         officialRefreshID = refreshID
         syncingOfficial = true
@@ -460,13 +500,23 @@ final class LibraryStore: ObservableObject {
                 reconciled.history.insert(edit.progress, at: 0)
                 reconciled.readChapterIDs.insert(edit.progress.chapter.id)
             }
+            guard (startingScope == nil || sessionScope(mode) == startingScope),
+                  SessionCookieStore.shared.generation == startingSessionGeneration else {
+                loadedOfficialModes.remove(mode)
+                return
+            }
             officialSnapshots[mode] = reconciled
+            if let scope = sessionScope(mode) { snapshotScopes[mode] = scope }
             apply(partition(for: mode))
             officialSyncError = collections.error
+            persist()
         } catch is CancellationError {
         } catch let error as URLError where error.code == .cancelled {
         } catch KomiicError.authenticationRequired {
-            if officialRefreshID == refreshID { resetOfficialSession(mode: mode) }
+            if officialRefreshID == refreshID {
+                resetOfficialSession(mode: mode)
+                loadedOfficialModes.insert(mode)
+            }
         } catch {
             guard officialRefreshID == refreshID else { return }
             reportOfficialError(error)
@@ -474,7 +524,15 @@ final class LibraryStore: ObservableObject {
     }
 
     func resetOfficialSession(mode: ComicContentMode? = nil) {
+        for target in mode.map({ [$0] }) ?? ComicContentMode.allCases {
+            if let scope = snapshotScopes.removeValue(forKey: target) {
+                snapshotStore.remove(key: "official:\(target.rawValue):\(scope)")
+            }
+        }
         if let mode {
+            refreshTasks[mode]?.cancel()
+            refreshTasks[mode] = nil
+            refreshTaskIDs[mode] = nil
             officialAccountIDs[mode] = nil
             officialSnapshots[mode] = nil
             favoriteEdits[mode] = nil
@@ -739,6 +797,11 @@ final class LibraryStore: ObservableObject {
     }
 
     private func persist() {
+        for (mode, snapshot) in officialSnapshots {
+            guard let accountID = officialAccountIDs[mode], let scope = snapshotScopes[mode],
+                  sessionScope(mode) == scope else { continue }
+            snapshotStore.save(CachedOfficialLibrary(accountID: accountID, snapshot: snapshot), key: "official:\(mode.rawValue):\(scope)")
+        }
         guard canPersist else {
             lastError = "为保留无法读取的原始资料，暂未保存更改。请备份后在设置中清除本机资料。"
             return

@@ -324,8 +324,10 @@ struct KomiicAPI: Sendable {
         try Task.checkCancellation()
         try await refreshSessionIfNeeded()
         var request = request(path: "api/query")
+        let cookieGeneration = SessionCookieStore.shared.generation
         request.httpBody = try JSONSerialization.data(withJSONObject: ["operationName": operation, "query": query, "variables": variables])
         let (data, response) = try await session.data(for: request)
+        if session === Self.apiSession { SessionCookieStore.shared.capture(generation: cookieGeneration) }
         guard let http = response as? HTTPURLResponse else { throw KomiicError.invalidResponse }
         try Self.checkStatus(http.statusCode)
         let decoder = JSONDecoder()
@@ -361,7 +363,7 @@ struct KomiicAPI: Sendable {
 
     private func refreshSessionIfNeeded() async throws {
         try await SessionRefreshCoordinator.shared.refreshIfNeeded(
-            baseURL: baseURL, session: session, request: request(path: "auth/refresh")
+            baseURL: baseURL, session: session, request: request(path: "auth/refresh"), persistCookies: session === Self.apiSession
         )
     }
 
@@ -417,7 +419,7 @@ private actor SessionRefreshCoordinator {
         clearingSessions = max(0, clearingSessions - 1)
     }
 
-    func refreshIfNeeded(baseURL: URL, session: URLSession, request: URLRequest) async throws {
+    func refreshIfNeeded(baseURL: URL, session: URLSession, request: URLRequest, persistCookies: Bool) async throws {
         guard clearingSessions == 0 else { throw KomiicError.authenticationRequired }
         let key = "\(baseURL.scheme ?? "https")://\(baseURL.host ?? ""):\(baseURL.port ?? 443)"
         if let pending = inFlight[key] {
@@ -428,9 +430,12 @@ private actor SessionRefreshCoordinator {
         let refresh = Task<Void, Error> {
             // Cookies may have changed while this actor/task was waiting for execution.
             guard Self.needsRefresh(baseURL) else { return }
+            let cookieGeneration = SessionCookieStore.shared.generation
             let (_, response) = try await session.data(for: request)
+            try Task.checkCancellation()
             guard let http = response as? HTTPURLResponse else { throw KomiicError.invalidResponse }
             try KomiicAPI.checkStatus(http.statusCode)
+            if persistCookies { SessionCookieStore.shared.capture(generation: cookieGeneration) }
         }
         inFlight[key] = refresh
         defer { inFlight.removeValue(forKey: key) }
@@ -438,7 +443,10 @@ private actor SessionRefreshCoordinator {
     }
 
     private static func needsRefresh(_ baseURL: URL) -> Bool {
-        guard let token = HTTPCookieStorage.shared.cookies(for: baseURL)?.first(where: { $0.name == "komiic-access-token" })?.value else { return false }
+        let cookies = HTTPCookieStorage.shared.cookies(for: baseURL) ?? []
+        guard let token = cookies.first(where: { $0.name == "komiic-access-token" })?.value else {
+            return cookies.contains { $0.name == "komiic-refresh-token" }
+        }
         let segments = token.split(separator: ".")
         guard segments.count == 3 else { return false }
         var payload = String(segments[1]).replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")

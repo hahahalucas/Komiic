@@ -22,13 +22,13 @@ struct ContentWarningPreference: Codable, Hashable, Sendable {
     var action: ContentWarningAction
 }
 
-struct ProfileCategoryCount: Decodable, Identifiable, Sendable {
+struct ProfileCategoryCount: Codable, Identifiable, Sendable {
     var id: String
     var name: String
     var count: Int
 }
 
-struct KomiicAccountProfile: Sendable {
+struct KomiicAccountProfile: Codable, Sendable {
     var id: String
     var username: String
     var email: String

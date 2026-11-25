@@ -12,17 +12,27 @@ final class CatalogModel: ObservableObject {
     private let fetchComics: (CatalogFeed, Int, ContentFilter) async throws -> [Comic]
     private var requestTask: Task<[Comic], Error>?
     private var requestedFilter: ContentFilter?
+    private let snapshots: AppSnapshotStore?
+    private let cachePrefix: String
+    private let scopeIsCurrent: () -> Bool
 
     func loadIfNeeded(feed: CatalogFeed, filter: ContentFilter) async {
         guard loadedFilter != filter, !(loading && requestedFilter == filter) else { return }
+        if restore(filter: filter) { return }
         guard error == nil || requestedFilter != filter else { return }
         await load(feed: feed, filter: filter, reset: true)
     }
 
-    init(fetchComics: @escaping (CatalogFeed, Int, ContentFilter) async throws -> [Comic] = { feed, offset, filter in
+    init(snapshots: AppSnapshotStore? = nil, cachePrefix: String = "",
+         scopeIsCurrent: @escaping () -> Bool = { true },
+         fetchComics: @escaping (CatalogFeed, Int, ContentFilter) async throws -> [Comic] = { feed, offset, filter in
         try await KomiicAPI().catalog(feed: feed, offset: offset, filter: filter)
     }) {
         self.fetchComics = fetchComics
+        self.snapshots = snapshots
+        self.cachePrefix = cachePrefix
+        self.scopeIsCurrent = scopeIsCurrent
+        _ = restore(filter: .all)
     }
 
     func load(feed: CatalogFeed, filter: ContentFilter, reset: Bool) async {
@@ -58,7 +68,7 @@ final class CatalogModel: ObservableObject {
         }
         do {
             let results = try await request.value
-            guard generation == requestID else { return }
+            guard generation == requestID, scopeIsCurrent() else { return }
             offset = requestedOffset + results.count
             var ids = reset ? Set<String>() : Set(comics.map(\.id))
             let newComics = results.filter { ids.insert($0.id).inserted }
@@ -66,11 +76,26 @@ final class CatalogModel: ObservableObject {
             else { comics.append(contentsOf: newComics) }
             hasMore = !results.isEmpty && !newComics.isEmpty
             loadedFilter = filter
+            let saved = Array(comics.prefix(90))
+            snapshots?.save(CatalogSnapshot(comics: saved, offset: comics.count > 90 ? saved.count : offset,
+                hasMore: comics.count > 90 || hasMore), key: cacheKey(filter))
         } catch {
             // Only superseded requests are ignored. An active request that the network
             // cancels still needs a retry state instead of an endless initial spinner.
             if generation == requestID { self.error = error.localizedDescription }
         }
+    }
+
+    func cancel() {
+        generation = UUID(); requestTask?.cancel(); requestTask = nil; loading = false
+    }
+    private func cacheKey(_ filter: ContentFilter) -> String { "catalog:\(cachePrefix):\(filter.rawValue)" }
+    private func restore(filter: ContentFilter) -> Bool {
+        guard let cached = snapshots?.load(CatalogSnapshot.self, key: cacheKey(filter)) else { return false }
+        cancel()
+        comics = cached.comics; offset = cached.offset; hasMore = cached.hasMore
+        loadedFilter = filter; requestedFilter = filter; error = nil
+        return true
     }
 }
 
@@ -210,7 +235,7 @@ private struct CatalogFeedPage: View {
         }
         .scrollBounceBehavior(.always, axes: .vertical)
         .refreshable { await reload() }
-        .task(id: active ? filter : nil) {
+        .task(id: "\(ObjectIdentifier(model)):\(active):\(filter.rawValue)") {
             guard !Task.isCancelled, active, model.loadedFilter != filter else { return }
             await model.loadIfNeeded(feed: feed, filter: filter)
         }

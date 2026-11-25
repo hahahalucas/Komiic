@@ -16,7 +16,6 @@ struct ReaderView: View {
     @State private var loading = true
     @State private var error: String?
     @State private var currentPage = 0
-    @State private var scrollID: Int?
     @State private var controls = true
     @State private var retry = 0
     @State private var readingContentMode: ComicContentMode?
@@ -27,7 +26,7 @@ struct ReaderView: View {
     @State private var directoryError: String?
     @State private var requestedPage: Int?
     @State private var pageRequestID = UUID()
-    @State private var bottomPosition: CGFloat = .greatestFiniteMagnitude
+    @State private var scrollRequestID = UUID()
     @State private var zoomedPages: Set<String> = []
     @State private var zoomResetID = UUID()
     private var currentChapter: Chapter {
@@ -42,89 +41,49 @@ struct ReaderView: View {
     }
 
     var body: some View {
-        GeometryReader { geometry in
-            ZStack {
-                (settings.einkMode.enabled ? Color.white : Color.black).ignoresSafeArea()
-                if loading {
-                    ProgressView("正在载入章节…").tint(foreground).foregroundStyle(foreground)
-                } else if let error {
-                    VStack(spacing: 18) {
-                        EmptyState(symbol: "wifi.exclamationmark", title: "暂时无法阅读", message: error,
-                                   actionTitle: "重试", action: { retry += 1 })
-                        Button("返回") { dismiss() }
-                    }.foregroundStyle(foreground)
-                } else if pages.isEmpty {
-                    EmptyState(symbol: "doc", title: "本章暂无页面", message: "可以稍后重试，或在官网查看。",
-                               actionTitle: "返回", action: { dismiss() }).foregroundStyle(foreground)
-                } else {
-                    if settings.readingMode == .scroll && !doublePage {
-                        ScrollView {
-                            LazyVStack(spacing: settings.einkMode.enabled ? 0 : 8) {
-                                ForEach(Array(pages.enumerated()), id: \.offset) { index, page in
-                                    ReaderPageImage(page: page, chapterID: currentChapter.id, baseURL: KomiicAPI(mode: readingContentMode ?? settings.contentMode).baseURL, allowNetwork: !isOffline,
-                                                    zoomResetID: zoomResetID, onZoomChange: { updateZoom(pageID: page.id, active: $0) })
-                                        .frame(width: min(geometry.size.width, 1_000))
-                                        .id(index)
-                                }
-                                Text(directoryLoaded ? (nextChapter == nil ? "继续上拉返回目录" : "继续上拉阅读下一话") : "正在读取目录…")
-                                    .font(.caption).foregroundStyle(.secondary).padding(.vertical, 24)
-                                    .frame(maxWidth: .infinity)
-                                    .background(GeometryReader { proxy in
-                                        Color.clear.preference(key: ReaderBottomPositionKey.self,
-                                            value: proxy.frame(in: .named("reader-scroll")).maxY)
-                                    })
-                            }
-                            .scrollTargetLayout()
-                            .frame(maxWidth: .infinity)
-                        }
-                        .scrollPosition(id: $scrollID, anchor: .top)
-                        .scrollDisabled(!zoomedPages.isEmpty)
-                        .coordinateSpace(name: "reader-scroll")
-                        .scrollBounceBehavior(.always, axes: .vertical)
-                        .onPreferenceChange(ReaderBottomPositionKey.self) { bottomPosition = $0 }
-                        .simultaneousGesture(endOfChapterGesture(atEnd: bottomPosition <= geometry.size.height + 8))
-                        .onChange(of: scrollID) { _, value in
-                            guard let value else { return }
-                            currentPage = value
-                            saveProgress()
-                        }
-                        .onTapGesture { toggleControls() }
+        GeometryReader { safeGeometry in
+            GeometryReader { geometry in
+                ZStack {
+                    (settings.einkMode.enabled ? Color.white : Color.black).ignoresSafeArea()
+                    if loading {
+                        ProgressView("正在载入章节…").tint(foreground).foregroundStyle(foreground)
+                    } else if let error {
+                        VStack(spacing: 18) {
+                            EmptyState(symbol: "wifi.exclamationmark", title: "暂时无法阅读", message: error,
+                                       actionTitle: "重试", action: { retry += 1 })
+                            Button("返回") { dismiss() }
+                        }.foregroundStyle(foreground)
+                    } else if pages.isEmpty {
+                        EmptyState(symbol: "doc", title: "本章暂无页面", message: "可以稍后重试，或在官网查看。",
+                                   actionTitle: "返回", action: { dismiss() }).foregroundStyle(foreground)
                     } else {
-                        TabView(selection: Binding(get: { spreadLayout.start(for: currentPage) }, set: { move(to: $0) })) {
-                            ForEach(spreadLayout.starts, id: \.self) { index in
-                                HStack(spacing: 0) {
-                                    ForEach(Array(spreadLayout.slots(for: index).enumerated()), id: \.offset) { slot, pageIndex in
-                                        Group {
-                                            if let pageIndex {
-                                                fittedPage(at: pageIndex, size: geometry.size, slot: slot)
-                                            } else {
-                                                Color.clear
-                                            }
-                                        }
-                                        .frame(width: geometry.size.width / CGFloat(spreadLayout.step), height: geometry.size.height)
-                                    }
+                        if !doublePage {
+                            readerCanvas()
+                        } else {
+                            TabView(selection: Binding(get: { spreadLayout.start(for: currentPage) }, set: { move(to: $0) })) {
+                                ForEach(spreadLayout.starts, id: \.self) { index in
+                                    readerCanvas(spread: spreadLayout.slots(for: index))
+                                        .tag(index)
                                 }
-                                .environment(\.layoutDirection, .leftToRight)
-                                .tag(index)
-                                .onTapGesture { toggleControls() }
                             }
+                            .tabViewStyle(.page(indexDisplayMode: .never))
+                            .environment(\.layoutDirection, settings.readingDirection == .left ? .rightToLeft : .leftToRight)
+                            .onChange(of: currentPage) { _, _ in saveProgress() }
+                            .simultaneousGesture(endOfChapterGesture(atEnd: spreadLayout.next(from: currentPage) == spreadLayout.start(for: currentPage)))
                         }
-                        .tabViewStyle(.page(indexDisplayMode: .never))
-                        .environment(\.layoutDirection, settings.readingDirection == .left ? .rightToLeft : .leftToRight)
-                        .onChange(of: currentPage) { _, _ in saveProgress() }
-                        .simultaneousGesture(endOfChapterGesture(atEnd: spreadLayout.next(from: currentPage) == spreadLayout.start(for: currentPage)))
-                    }
-                    if controls {
-                        readerControls.padding(.top, geometry.safeAreaInsets.top).padding(.bottom, geometry.safeAreaInsets.bottom)
+                        if controls {
+                            readerControls(topInset: ReaderChromePlacement.topPadding(safeAreaTop: safeGeometry.safeAreaInsets.top)).padding(.bottom, safeGeometry.safeAreaInsets.bottom)
+                        }
                     }
                 }
+                .statusBarHidden(true)
+                .preferredColorScheme(settings.einkMode.enabled ? .light : .dark)
+                .onAppear { updateSpread(size: geometry.size) }
+                .onChange(of: geometry.size) { _, size in updateSpread(size: size) }
             }
-            .statusBarHidden(true)
-            .preferredColorScheme(settings.einkMode.enabled ? .light : .dark)
-            .onAppear { updateSpread(size: geometry.size) }
-            .onChange(of: geometry.size) { _, size in updateSpread(size: size) }
+            .ignoresSafeArea()
         }
-        .ignoresSafeArea()
+        .statusBarHidden(true)
         .task(id: "\(currentChapter.id):\(retry)") {
             if readingContentMode == nil { readingContentMode = settings.contentMode }
             await loadPages()
@@ -138,16 +97,12 @@ struct ReaderView: View {
             saveProgress()
             if settings.cachePolicy == .afterReading { downloads.clearCache(chapterID: currentChapter.id) }
         }
-        .onChange(of: settings.readingMode) { _, mode in
-            resetZoom()
-            if mode == .scroll { scrollID = currentPage }
-        }
         .onChange(of: settings.readingDirection) { _, _ in resetZoom() }
     }
 
     private func updateSpread(size: CGSize) {
         resetZoom()
-        doublePage = UIDevice.current.userInterfaceIdiom == .pad && size.width > size.height
+        doublePage = size.width > size.height
     }
 
     private func updateZoom(pageID: String, active: Bool) {
@@ -213,8 +168,7 @@ struct ReaderView: View {
         requestedPage = 0
         pages = []
         currentPage = 0
-        scrollID = nil
-        bottomPosition = .greatestFiniteMagnitude
+        scrollRequestID = UUID()
         error = nil
         loading = true
         selectedChapter = target
@@ -236,21 +190,32 @@ struct ReaderView: View {
         } catch { directoryError = "目录读取失败，点击重试" }
     }
 
-    private func fittedPage(at index: Int, size: CGSize, slot: Int) -> some View {
-        let page = pages[index]
-        let ratio = page.width > 0 && page.height > 0 ? CGFloat(page.width) / CGFloat(page.height) : 0.7
-        let availableWidth = size.width / CGFloat(spreadLayout.step)
-        let width = min(availableWidth, size.height * ratio)
-        return ReaderPageImage(page: page, chapterID: currentChapter.id,
-            baseURL: KomiicAPI(mode: readingContentMode ?? settings.contentMode).baseURL,
-            allowNetwork: !isOffline, shouldLoad: abs(index - currentPage) <= spreadLayout.step + 1,
-            zoomResetID: zoomResetID, onZoomChange: { updateZoom(pageID: page.id, active: $0) })
-            .frame(width: width, height: width / ratio)
-            .frame(width: availableWidth, height: size.height,
-                   alignment: doublePage ? (slot == 0 ? .trailing : .leading) : .center)
+    private func readerCanvas(spread: [Int?]? = nil) -> some View {
+        let chapterID = currentChapter.id
+        let scope = "\(chapterID):\(spread.map { String(describing: $0) } ?? "chapter")"
+        return ReaderCanvasView(pages: pages, scopeID: scope, mode: spread.map { .spread($0) } ?? .chapter,
+            targetPage: currentPage, requestID: scrollRequestID, resetID: zoomResetID,
+            spacing: settings.einkMode.enabled ? 0 : 8,
+            footer: directoryLoaded ? (nextChapter == nil ? "继续上拉返回目录" : "继续上拉阅读下一话") : "正在读取目录…",
+            onPageChange: { index in
+                guard spread == nil, currentChapter.id == chapterID, currentPage != index else { return }
+                currentPage = index
+                saveProgress()
+            }, onZoomChange: { updateZoom(pageID: scope, active: $0) },
+            onEndOfChapter: { Task { await continueToNextChapter() } },
+            renderPage: { index in
+                guard pages.indices.contains(index) else { return AnyView(EmptyView()) }
+                return AnyView(ReaderPageImage(page: pages[index], chapterID: chapterID,
+                    baseURL: KomiicAPI(mode: readingContentMode ?? settings.contentMode).baseURL,
+                    allowNetwork: !isOffline,
+                    shouldLoad: spread == nil || abs(index - currentPage) <= spreadLayout.step + 1)
+                    .environmentObject(downloads).environmentObject(settings))
+            })
+            .onTapGesture { toggleControls() }
+            .onDisappear { updateZoom(pageID: scope, active: false) }
     }
 
-    private var readerControls: some View {
+    private func readerControls(topInset: CGFloat) -> some View {
         VStack(spacing: 18) {
             HStack(spacing: 8) {
                 Button { dismiss() } label: {
@@ -277,7 +242,7 @@ struct ReaderView: View {
         .foregroundStyle(foreground)
         .frame(maxWidth: 680)
         .padding(.horizontal, 16)
-        .padding(.top, 8)
+        .padding(.top, topInset)
         .padding(.bottom, 12)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .transition(.opacity)
@@ -285,9 +250,6 @@ struct ReaderView: View {
 
     private var readerMenu: some View {
         Menu {
-            Picker("阅读方式", selection: $settings.readingMode) {
-                ForEach(ReadingMode.allCases) { Text($0.title).tag($0) }
-            }
             Picker("阅读方向", selection: $settings.readingDirection) {
                 ForEach(ReadingDirection.allCases) { Text($0.title).tag($0) }
             }
@@ -365,7 +327,7 @@ struct ReaderView: View {
             guard pageRequestID == id, currentChapter.id == target.id else { return }
             pages = loadedPages
             currentPage = min(max(0, requestedPage ?? initialPage), max(0, pages.count - 1))
-            scrollID = currentPage
+            scrollRequestID = UUID()
             saveProgress()
             if settings.loadingMode == .download && !isOffline { scheduleDownload() }
         } catch is CancellationError {
@@ -374,7 +336,7 @@ struct ReaderView: View {
     private func move(to page: Int) {
         resetZoom()
         currentPage = min(max(0, page), max(0, pages.count - 1))
-        scrollID = currentPage
+        scrollRequestID = UUID()
         saveProgress()
     }
     private func saveProgress() {
@@ -392,11 +354,6 @@ struct ReaderView: View {
         let chapterPages = pages
         Task { await downloads.download(comic: comic, chapter: target, pages: chapterPages, baseURL: baseURL) }
     }
-}
-
-private struct ReaderBottomPositionKey: PreferenceKey {
-    static let defaultValue: CGFloat = .greatestFiniteMagnitude
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }
 
 /// Reading chrome uses the system glass surface; electronic ink mode stays opaque.
@@ -422,8 +379,6 @@ private struct ReaderPageImage: View {
     let baseURL: URL
     let allowNetwork: Bool
     var shouldLoad = true
-    let zoomResetID: UUID
-    let onZoomChange: (Bool) -> Void
     @EnvironmentObject private var downloads: DownloadStore
     @EnvironmentObject private var settings: ReaderSettings
     @State private var image: UIImage?
@@ -434,7 +389,7 @@ private struct ReaderPageImage: View {
     var body: some View {
         ZStack {
             if let image {
-                ReaderZoomImage(image: image, resetID: zoomResetID, onZoomChange: onZoomChange)
+                Image(uiImage: image).resizable().scaledToFit()
                     .grayscale(settings.einkMode.enabled ? 1 : 0)
                     .brightness(settings.dimImages ? -0.16 : 0)
             } else {
@@ -453,7 +408,6 @@ private struct ReaderPageImage: View {
         .aspectRatio(ratio, contentMode: .fit)
         .accessibilityLabel("漫画页面")
         .accessibilityHint("双指放大，收拢还原至原始比例")
-        .onDisappear { onZoomChange(false) }
         .task(id: "\(page.id)-\(retry)-\(shouldLoad)") {
             guard shouldLoad, image == nil else { return }
             do {

@@ -97,7 +97,7 @@ func officialResult<T>(_ operation: () async throws -> T) async -> Result<T, Err
     catch { return .failure(error) }
 }
 
-struct OfficialLibrarySnapshot {
+struct OfficialLibrarySnapshot: Codable, Sendable {
     var favorites: [Comic] = []
     var history: [ReadingProgress] = []
     var readChapterIDs: Set<String> = []
@@ -157,4 +157,9 @@ struct OfficialLibrarySnapshot {
         formatter.formatOptions = [.withInternetDateTime]
         return formatter.date(from: value)
     }
+}
+
+struct CachedOfficialLibrary: Codable, Sendable {
+    var accountID: String
+    var snapshot: OfficialLibrarySnapshot
 }

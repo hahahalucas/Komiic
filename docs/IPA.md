@@ -4,7 +4,9 @@
 
 iPad 不强制全屏，声明全部四个方向以支持系统多任务与可变窗口。窗口中的方向和大小以 iPadOS 的规则为准；阅读方向偏好不能覆盖系统对窗口场景的限制。
 
-当前源码为 **0.8.0（build 8）**，新增阅读图片放大（最小原始比例）、修复书柜导航，并将最近阅读点击改为进入漫画主页。设备版编译和本次 XCTest 状态见[验证记录](Verification.md)。
+当前源码为 **0.9.0（build 9）**，包含竖屏整话/横屏双页整体缩放、跨重启缓存和账号会话恢复，以及阅读顶部控制条安全间距修正。本版云端测试和 IPA 状态见[验证记录](Verification.md)。
+
+以下为 **0.8.0 历史构建记录**。
 
 [0.8.0 完整云端构建](https://github.com/hahahalucas/Komiic/actions/runs/45655410195)已成功：iPhone、iPad 各 100 项 XCTest 通过，共 200 项、零失败；Xcode 26.6 / iOS SDK 26.5 设备 Release 编译及 IPA 校验通过。[下载产物](https://github.com/hahahalucas/Komiic/actions/runs/45655410195/artifacts/15043018905)并解压，使用其中的 `Komiic-iPhone-iPad-unsigned.ipa`。包内版本为 0.8.0，同一份包支持 iPhone/iPad，最低 iOS/iPadOS 17，安装前需自签。IPA SHA-256：`5886494138e4c694b10e45a9c30e9b46420b07fec76e6c89a6c5f9c7dbc9afba`。完整证据见[验证记录](Verification.md)。
 
@@ -50,9 +52,9 @@ bash scripts/build_ipa.sh --unsigned --skip-tests
 
 ## GitHub 云端构建
 
-已准备 `.github/workflows/build-ipa.yml`，支持手动运行，或推送到 `main`、`komiic-ios-build`、`codex/komiic-0.8.0` 等构建分支时自动运行。
+已准备 `.github/workflows/build-ipa.yml`，支持手动运行，或推送到 `main`、`komiic-ios-build`、`codex/komiic-0.9.0` 等构建分支时自动运行。
 
-公开仓库地址为 [hahahalucas/Komiic](https://github.com/hahahalucas/Komiic)。向 `main` 推送代码后会自动开始云编译，也可以从仓库 **Actions → Build iPhone and iPad IPA → Run workflow** 手动运行。默认选择 `unsigned`，构建成功后下载作业的 Artifact。默认不会使用签名资料或发布 Release；Artifact 保留 7 天。
+公开仓库地址为 [hahahalucas/Komiic](https://github.com/hahahalucas/Komiic)。向 `main` 推送代码后会自动开始云编译，也可以从仓库 **Actions → Build iPhone and iPad IPA → Run workflow** 手动运行。默认选择 `unsigned`，构建成功后下载作业的 Artifact。默认不会使用签名资料或发布 Release；Artifact 保留 7 天。构建同时上传一个仅含 IPA 的小压缩包，以及包含测试结果和日志的完整验证包。
 
 工作流使用 GitHub 的标准 `macos-26` runner。2026-11-19 查阅的[官方镜像清单](https://github.com/actions/runner-images/blob/main/images/macos/macos-26-Readme.md)列出 Xcode 26.6 为默认版本；[官方 runner 文档](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)列出该标签。镜像会更新，因此脚本仍会验证实际 Xcode 和 SDK 版本。公开仓库使用标准 GitHub 托管 runner 的计算分钟免费，仍受并发、单次任务时长和存储限制，详见 [GitHub Actions 用量说明](https://docs.github.com/en/actions/concepts/billing-and-usage)。私有仓库的执行使用账户的 Actions 额度，超出部分按 GitHub 的账户设置计费。
 

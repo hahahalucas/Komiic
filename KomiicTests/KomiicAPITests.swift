@@ -383,6 +383,30 @@ final class KomiicAPITests: XCTestCase {
         XCTAssertEqual(chapters.map(\.id), ["2", "10", "1"])
     }
 
+    func testSavedRefreshCookieRenewsSessionWhenAccessCookieIsMissing() async throws {
+        let domain = "restored-session-\(UUID().uuidString.lowercased()).invalid"
+        let source = URL(string: "https://\(domain)")!
+        let refresh = try XCTUnwrap(HTTPCookie(properties: [.domain: domain, .path: "/", .name: "komiic-refresh-token",
+            .value: "saved-refresh", .secure: "TRUE", .expires: Date().addingTimeInterval(3600)]))
+        let access = try XCTUnwrap(HTTPCookie(properties: [.domain: domain, .path: "/", .name: "komiic-access-token",
+            .value: "restored-access", .secure: "TRUE", .expires: Date().addingTimeInterval(3600)]))
+        HTTPCookieStorage.shared.setCookie(refresh)
+        defer { for cookie in HTTPCookieStorage.shared.cookies(for: source) ?? [] { HTTPCookieStorage.shared.deleteCookie(cookie) } }
+        let renewals = LockedBox(0)
+        StubURLProtocol.handler = { request in
+            if request.url?.path == "/auth/refresh" {
+                renewals.update { $0 += 1 }
+                HTTPCookieStorage.shared.setCookie(access)
+                return (200, "application/json", Data("{}".utf8))
+            }
+            return (200, "application/json", Data(#"{"data":{"comics":[{"id":"restored","title":"恢复"}]}}"#.utf8))
+        }
+        let restored = KomiicAPI(baseURL: source, session: session, imageSession: session)
+        let comics = try await restored.catalog(feed: .updated)
+        XCTAssertEqual(comics.first?.id, "restored")
+        XCTAssertEqual(renewals.value, 1)
+    }
+
     func testConcurrentRequestsShareOneExpiredSessionRefresh() async throws {
         let domain = "refresh-test-\(UUID().uuidString.lowercased()).invalid"
         let source = URL(string: "https://\(domain)")!

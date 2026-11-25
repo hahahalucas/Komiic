@@ -54,8 +54,22 @@ struct WebsiteView: View {
 enum WebCookieBridge {
     private static var clearingSessions = 0
     private static var synchronizationGeneration = UUID()
+    private static var synchronizationTask: Task<Void, Never>?
 
     @MainActor static func synchronize(preferWeb: Bool = false) async {
+        if let running = synchronizationTask {
+            await running.value
+            if !preferWeb { return }
+        }
+        let id = UUID()
+        synchronizationGeneration = id
+        let task = Task { await performSynchronization(preferWeb: preferWeb) }
+        synchronizationTask = task
+        await task.value
+        if synchronizationGeneration == id { synchronizationTask = nil }
+    }
+
+    private static func performSynchronization(preferWeb: Bool) async {
         guard clearingSessions == 0 else { return }
         let generation = synchronizationGeneration
         let webStore = WKWebsiteDataStore.default().httpCookieStore
@@ -84,6 +98,12 @@ enum WebCookieBridge {
                 for cookie in web { HTTPCookieStorage.shared.setCookie(cookie) }
             }
         }
+        guard clearingSessions == 0, synchronizationGeneration == generation else { return }
+        let currentCookies = HTTPCookieStorage.shared.cookies ?? []
+        let changedAccounts = Set(ComicContentMode.allCases.filter {
+            SessionCookieStore.credentialSignature(nativeCookies, mode: $0) != SessionCookieStore.credentialSignature(currentCookies, mode: $0)
+        })
+        SessionCookieStore.shared.capture(changedAccounts: changedAccounts)
     }
 
     private static func isOfficial(_ cookie: HTTPCookie) -> Bool {
@@ -105,6 +125,9 @@ enum WebCookieBridge {
     @MainActor static func clear() async {
         clearingSessions += 1
         synchronizationGeneration = UUID()
+        synchronizationTask?.cancel()
+        synchronizationTask = nil
+        SessionCookieStore.shared.beginClearing()
         defer { clearingSessions -= 1 }
         await KomiicAPI.beginClearingSession()
         let cookieStore = WKWebsiteDataStore.default().httpCookieStore
@@ -117,6 +140,7 @@ enum WebCookieBridge {
             HTTPCookieStorage.shared.deleteCookie(cookie)
         }
         await KomiicAPI.endClearingSession()
+        SessionCookieStore.shared.endClearing()
     }
 }
 

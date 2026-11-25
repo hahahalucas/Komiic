@@ -26,6 +26,7 @@ private struct AppContainerView: View {
     @StateObject private var settings: ReaderSettings
 
     init() {
+        SessionCookieStore.shared.restore()
         let settings = ReaderSettings()
         _settings = StateObject(wrappedValue: settings)
         _library = StateObject(wrappedValue: LibraryStore(initialMode: settings.contentMode))
@@ -40,12 +41,15 @@ private struct AppContainerView: View {
                 .tint(KomiicTheme.accent)
                 .preferredColorScheme(settings.theme.colorScheme)
                 .task {
-                    await WebCookieBridge.synchronize()
                     downloads.applyCachePolicy(settings.cachePolicy)
                     OrientationController.apply(settings.orientation)
                 }
                 .onChange(of: settings.orientation) { _, value in OrientationController.apply(value) }
                 .onChange(of: settings.cachePolicy) { _, value in downloads.applyCachePolicy(value) }
+                .onReceive(NotificationCenter.default.publisher(for: .komiicSessionDidChange).receive(on: DispatchQueue.main)) { _ in
+                    content.synchronizeSessionScopes()
+                    library.synchronizeSessionScopes()
+                }
     }
 }
 
