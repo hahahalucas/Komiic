@@ -73,8 +73,12 @@ final class AccountProfileModel: ObservableObject {
     private let sessionScope: () -> String?
     private var cachedScope: String?
 
-    init(mode: ComicContentMode, snapshots: AppSnapshotStore? = nil,
-         sessionScope: @escaping () -> String? = { nil },
+    convenience init(mode: ComicContentMode, fetchProfile: (() async throws -> KomiicAccountProfile?)? = nil) {
+        self.init(mode: mode, snapshots: nil, sessionScope: { nil }, fetchProfile: fetchProfile)
+    }
+
+    init(mode: ComicContentMode, snapshots: AppSnapshotStore?,
+         sessionScope: @escaping () -> String?,
          fetchProfile: (() async throws -> KomiicAccountProfile?)? = nil) {
         self.mode = mode
         self.snapshots = snapshots
