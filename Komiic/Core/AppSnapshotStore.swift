@@ -27,7 +27,7 @@ final class AppSnapshotStore: @unchecked Sendable {
     func save<T: Encodable & Sendable>(_ value: T, key: String) {
         queue.async { [self] in
             guard let data = try? JSONEncoder().encode(value) else { return }
-            try? data.write(to: url(key), options: [.atomic, .completeUntilFirstUserAuthentication])
+            try? data.write(to: url(key), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
         }
     }
 
