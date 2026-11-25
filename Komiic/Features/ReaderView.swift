@@ -72,7 +72,7 @@ struct ReaderView: View {
                             .simultaneousGesture(endOfChapterGesture(atEnd: spreadLayout.next(from: currentPage) == spreadLayout.start(for: currentPage)))
                         }
                         if controls {
-                            readerControls(topInset: ReaderChromePlacement.topPadding(safeAreaTop: safeGeometry.safeAreaInsets.top)).padding(.bottom, safeGeometry.safeAreaInsets.bottom)
+                            readerControls(topInset: ReaderChromePlacement.topPadding(safeAreaTop: safeGeometry.safeAreaInsets.top)).padding(.bottom, geometry.safeAreaInsets.bottom)
                         }
                     }
                 }
@@ -209,6 +209,7 @@ struct ReaderView: View {
                     baseURL: KomiicAPI(mode: readingContentMode ?? settings.contentMode).baseURL,
                     allowNetwork: !isOffline,
                     shouldLoad: spread == nil || abs(index - currentPage) <= spreadLayout.step + 1)
+                    .id("\(chapterID):\(pages[index].id)")
                     .environmentObject(downloads).environmentObject(settings))
             })
             .onTapGesture { toggleControls() }
