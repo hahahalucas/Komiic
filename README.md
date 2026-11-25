@@ -1,8 +1,15 @@
-# Komiic for iOS 0.7.0
+# Komiic for iOS 0.8.0
 
-基于 v3.0 升级的原生 SwiftUI 漫画客户端，当前版本 **0.7.0（build 7）**，支持 iPhone / iPad、iOS 17 及以上。使用 Apple 系统框架，无第三方运行时依赖。iOS 26 使用系统 Liquid Glass 导航及阅读控制条，旧系统保留兼容外观。
+基于 v3.0 升级的原生 SwiftUI 漫画客户端，当前版本 **0.8.0（build 8）**，支持 iPhone / iPad、iOS 17 及以上。使用 Apple 系统框架，无第三方运行时依赖。iOS 26 使用系统 Liquid Glass 导航及阅读控制条，旧系统保留兼容外观。
 
 ## 本次更新
+
+- 阅读图片支持双指放大、拖动查看；双指收拢最多还原至原始比例，不会缩得更小，也没有缩放回弹。支持滚动、翻页及 iPad 双页阅读。
+- 放大时拖动只移动图片，避免误翻页或误触章节末尾跳转；通过控制条换页、换话或旋转屏幕时还原比例。
+- 修复点击书柜内漫画后仍显示书柜、返回才看到漫画详情的问题。书柜和漫画使用同一条导航路径，返回顺序为漫画详情 → 书柜 → 书柜列表。
+- 最近阅读点击封面进入漫画主页，由主页「继续阅读」恢复上次章节和页码；保留原有进度显示和内容警告规则。
+
+## 0.7.0 已有功能
 
 - 阅读图片票据与首页、搜索等官网接口共用连接池，减少重复建立连接；漫画详情与章节目录合并为一次请求。
 - 封面缩略图与漫画原图在后台解码，已解码封面继续复用；页面缓存读写和图片校验移出主线程。漫画原图保留完整分辨率和图片方向。
@@ -58,9 +65,9 @@
 
 ## 验证与构建
 
-0.7.0 的本地工程结构及 Swift 语法检查、Xcode 26.6 / iOS SDK 26.5 设备 Release 编译及 IPA 校验通过；iPhone 和 iPad 各 95 项 XCTest 通过，共 190 项、零失败。包含新增的 12 项加载回归测试，完整结果见[验证记录](docs/Verification.md)。
+0.8.0 的本地工程结构及 Swift 语法检查通过，43 个 Swift 文件无语法错误；本版新增 5 项 UIKit 缩放测试，连同既有测试共 100 项/设备。iPhone/iPad XCTest、设备 Release 编译和 IPA 校验等待云端执行，完整结果见[验证记录](docs/Verification.md)。
 
-[下载 0.7.0 IPA 及完整验证资料](https://github.com/hahahalucas/Komiic/actions/runs/45208173469/artifacts/14835749218)。项目根目录的交付副本为 `Komiic-0.7.0-iPhone-iPad-unsigned.ipa`，安装前需自签。构建和签名说明见[构建说明](docs/IPA.md)。
+历史版本：[0.7.0 IPA 及完整验证资料](https://github.com/hahahalucas/Komiic/actions/runs/45208173469/artifacts/14835749218)。0.8.0 交付文件将在本版构建及校验通过后提供。构建和签名说明见[构建说明](docs/IPA.md)。
 
 本地环境为 Windows，可执行工程结构和 Swift 语法检查：
 
@@ -72,7 +79,7 @@ git diff --check
 
 2026-11-22 已实际验证两个官网域名的四类首页接口，八次请求均返回 HTTP 200，且内容类型分别为 REGULAR / H_MANGA，见 [0.4.0 接口记录](docs/v0.4.0-api.json)。登录后的资料读取、偏好与同步写入仍需真实账号验收。
 
-Xcode 编译、XCTest、模拟器界面及真机验证需在 Mac 完成；本地语法检查不能代替这些步骤。0.7.0 的云端编译、测试及 IPA 状态见 [验证记录](docs/Verification.md)，构建及签名方法见 [IPA 说明](docs/IPA.md)。
+Xcode 编译、XCTest、模拟器界面及真机验证需在 Mac 完成；本地语法检查不能代替这些步骤。0.8.0 的云端编译、测试及 IPA 状态见 [验证记录](docs/Verification.md)，构建及签名方法见 [IPA 说明](docs/IPA.md)。
 
 ```sh
 bash scripts/build_ipa.sh --unsigned

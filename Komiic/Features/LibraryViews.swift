@@ -106,7 +106,7 @@ struct ShelvesView: View {
                 }
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 155), spacing: 14)], spacing: 18) {
                     ForEach(library.shelves) { shelf in
-                        NavigationLink { ShelfDetailView(shelfID: shelf.id) } label: {
+                        NavigationLink(value: BookshelfRoute(id: shelf.id)) {
                             VStack(alignment: .leading, spacing: 12) {
                                 LazyVGrid(columns: [GridItem(.flexible(), spacing: 3), GridItem(.flexible(), spacing: 3)], spacing: 3) {
                                     ForEach(0..<4) { index in
@@ -137,7 +137,7 @@ struct ShelvesView: View {
     }
 }
 
-private struct ShelfDetailView: View {
+struct ShelfDetailView: View {
     let shelfID: UUID
     @EnvironmentObject private var library: LibraryStore
     @EnvironmentObject private var settings: ReaderSettings
@@ -185,10 +185,8 @@ private struct ShelfDetailView: View {
 }
 
 struct HistoryView: View {
-    @Environment(\.openComicDirectory) private var openComicDirectory
     @EnvironmentObject private var library: LibraryStore
     @EnvironmentObject private var settings: ReaderSettings
-    @State private var launch: ReaderLaunch?
     var body: some View {
         ScrollView {
             VStack(spacing: 14) {
@@ -197,9 +195,7 @@ struct HistoryView: View {
                 }
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 3), spacing: 18) {
                     ForEach(library.history.filter { !settings.shouldHide($0.comic) && !library.isBlocked($0.comic) }) { progress in
-                        ComicActivation(comic: progress.comic, action: {
-                            launch = ReaderLaunch(comic: progress.comic, chapter: progress.chapter, page: progress.page)
-                        }) {
+                        ComicActivation(comic: progress.comic) {
                             ComicCard(comic: progress.comic, progressLabel: "第 \(progress.page + 1) 页")
                                 .overlay(alignment: .bottom) {
                                     if progress.totalPages > 0 {
@@ -213,9 +209,6 @@ struct HistoryView: View {
             }.padding(16)
         }
         .refreshable { await library.refreshOfficialLibrary() }
-        .fullScreenCover(item: $launch) { item in
-            ReaderView(comic: item.comic, chapter: item.chapter, initialPage: item.page, onReturnToDirectory: openComicDirectory)
-        }
     }
 }
 

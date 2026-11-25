@@ -28,6 +28,8 @@ struct ReaderView: View {
     @State private var requestedPage: Int?
     @State private var pageRequestID = UUID()
     @State private var bottomPosition: CGFloat = .greatestFiniteMagnitude
+    @State private var zoomedPages: Set<String> = []
+    @State private var zoomResetID = UUID()
     private var currentChapter: Chapter {
         let selected = selectedChapter ?? chapter
         return directory.first { $0.id == selected.id } ?? selected
@@ -59,7 +61,8 @@ struct ReaderView: View {
                         ScrollView {
                             LazyVStack(spacing: settings.einkMode.enabled ? 0 : 8) {
                                 ForEach(Array(pages.enumerated()), id: \.offset) { index, page in
-                                    ReaderPageImage(page: page, chapterID: currentChapter.id, baseURL: KomiicAPI(mode: readingContentMode ?? settings.contentMode).baseURL, allowNetwork: !isOffline)
+                                    ReaderPageImage(page: page, chapterID: currentChapter.id, baseURL: KomiicAPI(mode: readingContentMode ?? settings.contentMode).baseURL, allowNetwork: !isOffline,
+                                                    zoomResetID: zoomResetID, onZoomChange: { updateZoom(pageID: page.id, active: $0) })
                                         .frame(width: min(geometry.size.width, 1_000))
                                         .id(index)
                                 }
@@ -75,6 +78,7 @@ struct ReaderView: View {
                             .frame(maxWidth: .infinity)
                         }
                         .scrollPosition(id: $scrollID, anchor: .top)
+                        .scrollDisabled(!zoomedPages.isEmpty)
                         .coordinateSpace(name: "reader-scroll")
                         .scrollBounceBehavior(.always, axes: .vertical)
                         .onPreferenceChange(ReaderBottomPositionKey.self) { bottomPosition = $0 }
@@ -135,17 +139,30 @@ struct ReaderView: View {
             if settings.cachePolicy == .afterReading { downloads.clearCache(chapterID: currentChapter.id) }
         }
         .onChange(of: settings.readingMode) { _, mode in
+            resetZoom()
             if mode == .scroll { scrollID = currentPage }
         }
+        .onChange(of: settings.readingDirection) { _, _ in resetZoom() }
     }
 
     private func updateSpread(size: CGSize) {
+        resetZoom()
         doublePage = UIDevice.current.userInterfaceIdiom == .pad && size.width > size.height
+    }
+
+    private func updateZoom(pageID: String, active: Bool) {
+        if active { zoomedPages.insert(pageID) }
+        else { zoomedPages.remove(pageID) }
+    }
+
+    private func resetZoom() {
+        zoomedPages.removeAll()
+        zoomResetID = UUID()
     }
 
     private func endOfChapterGesture(atEnd: Bool) -> some Gesture {
         DragGesture(minimumDistance: 20).onEnded { value in
-            guard atEnd, !loading, !pages.isEmpty,
+            guard atEnd, !loading, !pages.isEmpty, zoomedPages.isEmpty,
                   value.translation.height < -85,
                   abs(value.translation.height) > abs(value.translation.width) * 1.5 else { return }
             Task { await continueToNextChapter() }
@@ -189,6 +206,7 @@ struct ReaderView: View {
 
     private func openChapter(_ target: Chapter) {
         guard target.id != currentChapter.id, !loading else { return }
+        resetZoom()
         saveProgress()
         if settings.cachePolicy == .afterReading { downloads.clearCache(chapterID: currentChapter.id) }
         pageRequestID = UUID()
@@ -225,7 +243,8 @@ struct ReaderView: View {
         let width = min(availableWidth, size.height * ratio)
         return ReaderPageImage(page: page, chapterID: currentChapter.id,
             baseURL: KomiicAPI(mode: readingContentMode ?? settings.contentMode).baseURL,
-            allowNetwork: !isOffline, shouldLoad: abs(index - currentPage) <= spreadLayout.step + 1)
+            allowNetwork: !isOffline, shouldLoad: abs(index - currentPage) <= spreadLayout.step + 1,
+            zoomResetID: zoomResetID, onZoomChange: { updateZoom(pageID: page.id, active: $0) })
             .frame(width: width, height: width / ratio)
             .frame(width: availableWidth, height: size.height,
                    alignment: doublePage ? (slot == 0 ? .trailing : .leading) : .center)
@@ -353,6 +372,7 @@ struct ReaderView: View {
         } catch { if pageRequestID == id { self.error = error.localizedDescription } }
     }
     private func move(to page: Int) {
+        resetZoom()
         currentPage = min(max(0, page), max(0, pages.count - 1))
         scrollID = currentPage
         saveProgress()
@@ -402,6 +422,8 @@ private struct ReaderPageImage: View {
     let baseURL: URL
     let allowNetwork: Bool
     var shouldLoad = true
+    let zoomResetID: UUID
+    let onZoomChange: (Bool) -> Void
     @EnvironmentObject private var downloads: DownloadStore
     @EnvironmentObject private var settings: ReaderSettings
     @State private var image: UIImage?
@@ -412,7 +434,7 @@ private struct ReaderPageImage: View {
     var body: some View {
         ZStack {
             if let image {
-                Image(uiImage: image).resizable().scaledToFit()
+                ReaderZoomImage(image: image, resetID: zoomResetID, onZoomChange: onZoomChange)
                     .grayscale(settings.einkMode.enabled ? 1 : 0)
                     .brightness(settings.dimImages ? -0.16 : 0)
             } else {
@@ -430,6 +452,8 @@ private struct ReaderPageImage: View {
         }
         .aspectRatio(ratio, contentMode: .fit)
         .accessibilityLabel("漫画页面")
+        .accessibilityHint("双指放大，收拢还原至原始比例")
+        .onDisappear { onZoomChange(false) }
         .task(id: "\(page.id)-\(retry)-\(shouldLoad)") {
             guard shouldLoad, image == nil else { return }
             do {

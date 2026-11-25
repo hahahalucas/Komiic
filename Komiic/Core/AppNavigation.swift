@@ -1,5 +1,9 @@
 import SwiftUI
 
+struct BookshelfRoute: Hashable {
+    let id: UUID
+}
+
 private struct OpenAuthorKey: EnvironmentKey {
     static let defaultValue: (ComicAuthor) -> Void = { _ in }
 }

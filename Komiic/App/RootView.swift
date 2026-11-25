@@ -184,6 +184,7 @@ private struct TabRootScreen: View {
                     }
                 }
                 .navigationDestination(for: Comic.self) { ComicDetailView(comic: $0) }
+                .navigationDestination(for: BookshelfRoute.self) { ShelfDetailView(shelfID: $0.id) }
                 .navigationDestination(for: ComicAuthor.self) { AuthorView(author: $0) }
                 .navigationDestination(for: SearchRoute.self) { route in
                     switch route {

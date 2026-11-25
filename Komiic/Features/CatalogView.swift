@@ -150,7 +150,7 @@ struct CatalogView: View {
                 .pickerStyle(.segmented).frame(maxWidth: 230)
             } else {
                 Text(page == .popular ? "这个月，大家都在看" :
-                     page == .recommended ? "发现下一部好漫画" : "从上次读到的地方继续")
+                       page == .recommended ? "发现下一部好漫画" : "回顾最近读过的故事")
                     .font(.subheadline).foregroundStyle(.secondary)
                     .lineLimit(1).minimumScaleFactor(0.8)
             }
