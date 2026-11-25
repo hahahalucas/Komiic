@@ -9,7 +9,14 @@
 - 账号、官网收藏/历史/书柜/屏蔽的快照按会话和分区保存；账号变化取消旧请求，旧响应不能覆盖新账号。缓存失效/损坏回退网络，网络失败保留已显示内容。
 - Session-only 官网 Cookie 使用本机 Keychain 保存，尊重显式到期日；访问 Cookie 缺失但仍有刷新 Cookie 时可以续期。原生请求共用连接池，同步官网 Cookie 的并发操作合并，退出登录期间拒绝旧会话回写。
 
-以 21 项画布、持久化及会话测试替换 0.8.0 的 5 项单张图片缩放测试，并新增缺失访问 Cookie 的续期、退出登录并发保护测试。合计 118 项/设备。Windows 工程结构与严格 Swift 语法检查已通过；本版 Xcode 编译、iPhone/iPad XCTest 和 IPA 校验待云端执行。
+以 21 项画布、持久化及会话测试替换 0.8.0 的 5 项单张图片缩放测试，并新增缺失访问 Cookie 的续期、退出登录并发保护测试。合计 118 项/设备。Windows 工程结构与严格 Swift 语法检查已通过（48 个 Swift 文件）。2026-11-26（Asia/Shanghai），[最终云端构建 45673560888](https://github.com/hahahalucas/Komiic/actions/runs/45673560888)成功：Xcode 26.6 / iOS SDK 26.5 的 iPhone、iPad 模拟器各 **118 项 XCTest** 全部通过，共 **236 项、零失败**；真实设备 Release 编译及 IPA 结构校验通过。两份设备测试均包含 `TEST SUCCEEDED`，设备版包含 `BUILD SUCCEEDED`。
+
+- 实际 App 构建提交为 [`04082f09d800f77666042021467238acc440ed86`](https://github.com/hahahalucas/Komiic/commit/04082f09d800f77666042021467238acc440ed86)，源码树为 `eaa57873ebddf78c4d0a8c1f86a3cf8dae10332f`。分支为 [`codex/komiic-0.9.0`](https://github.com/hahahalucas/Komiic/tree/codex/komiic-0.9.0)。全部 77 个文本项目文件（含 48 个 Swift 文件）与上传时本地散列一致。
+- [仅下载 IPA 的小压缩包](https://github.com/hahahalucas/Komiic/actions/runs/45673560888/artifacts/15051453189)，1,384,934 字节，GitHub 提供的 ZIP SHA-256 为 `ca5858246d46a510ef81bb5c663658953699d0ee61654100fef376961faba918`。解压后使用 `Komiic-iPhone-iPad-unsigned.ipa`，有效期至北京时间 2026-12-03 02:35:44。
+- [完整验证资料](https://github.com/hahahalucas/Komiic/actions/runs/45673560888/artifacts/15051573065)为 125,819,215 字节，含两份 XCTest 结果、iPhone/iPad 首页截图及设备编译日志。GitHub 提供的 ZIP SHA-256 为 `883b3262b27b84f2cd821b13cbd5de70fc5dccdac31b5bb098c1603f81d10a85`。
+- 云端直接检查包内版本为 `0.9.0`，包含 arm64 iOS 设备代码，支持 iPhone/iPad、最低系统 17.0，链接 iOS SDK 26.5，且无签名结构。IPA SHA-256：`1373922c35696f6b097597b45807bf4fa63c1fd62bb43577ce96fe9b34f86261`；安装前需自签。
+- 6 项公开官网检查全部通过，见 [0.9.0 接口记录](v0.9.0-api.json)。结构化证据见 [0.9.0 构建记录](v0.9.0-build.json)。本机未进行二次解包或独立重算 ZIP 散列，上述 IPA 检查由云端脚本执行。
+- 首轮发现旧账号加载构造器的尾随闭包被误匹配为会话参数，已恢复兼容的初始化入口；最终源码在两种设备上完整重跑通过。未降低既有测试断言。
 
 真机验收项目：竖屏从任意页双指放大并继续上下阅读；横屏检查两页一起放大和两种阅读方向；收拢到原比例停止；隐藏/显示控制条，确认灵动岛下方可点击；杀掉重开 App 确认首页、账号和书柜立即恢复；下拉刷新及退出/切换账号核对隔离。当前未进行真机手势和真实账号人工验收。
 

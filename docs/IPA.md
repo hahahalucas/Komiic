@@ -6,6 +6,8 @@ iPad 不强制全屏，声明全部四个方向以支持系统多任务与可变
 
 当前源码为 **0.9.0（build 9）**，包含竖屏整话/横屏双页整体缩放、跨重启缓存和账号会话恢复，以及阅读顶部控制条安全间距修正。本版云端测试和 IPA 状态见[验证记录](Verification.md)。
 
+[0.9.0 完整云端构建](https://github.com/hahahalucas/Komiic/actions/runs/45673560888)成功：iPhone、iPad 各 118 项 XCTest 通过，共 236 项、零失败，设备 Release 编译和 IPA 校验通过。[下载仅含 IPA 的小压缩包（约 1.4 MB）](https://github.com/hahahalucas/Komiic/actions/runs/45673560888/artifacts/15051453189)并解压，使用 `Komiic-iPhone-iPad-unsigned.ipa`；安装前需自签。包内版本为 0.9.0，同一份包支持 iPhone/iPad，最低 iOS/iPadOS 17。IPA SHA-256：`1373922c35696f6b097597b45807bf4fa63c1fd62bb43577ce96fe9b34f86261`。[完整验证资料](https://github.com/hahahalucas/Komiic/actions/runs/45673560888/artifacts/15051573065)另含测试结果、截图和日志。
+
 以下为 **0.8.0 历史构建记录**。
 
 [0.8.0 完整云端构建](https://github.com/hahahalucas/Komiic/actions/runs/45655410195)已成功：iPhone、iPad 各 100 项 XCTest 通过，共 200 项、零失败；Xcode 26.6 / iOS SDK 26.5 设备 Release 编译及 IPA 校验通过。[下载产物](https://github.com/hahahalucas/Komiic/actions/runs/45655410195/artifacts/15043018905)并解压，使用其中的 `Komiic-iPhone-iPad-unsigned.ipa`。包内版本为 0.8.0，同一份包支持 iPhone/iPad，最低 iOS/iPadOS 17，安装前需自签。IPA SHA-256：`5886494138e4c694b10e45a9c30e9b46420b07fec76e6c89a6c5f9c7dbc9afba`。完整证据见[验证记录](Verification.md)。

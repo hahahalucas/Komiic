@@ -1,0 +1,82 @@
+{
+  "version": "0.9.0",
+  "build": 9,
+  "branch": "codex/komiic-0.9.0",
+  "baseCommit": "0884ff3da208e5445e95f812e5ddc05d2637c0f7",
+  "appSourceCommit": "04082f09d800f77666042021467238acc440ed86",
+  "sourceTree": "eaa57873ebddf78c4d0a8c1f86a3cf8dae10332f",
+  "workflowRun": "https://github.com/hahahalucas/Komiic/actions/runs/45673560888",
+  "conclusion": "success",
+  "ipaArtifactURL": "https://github.com/hahahalucas/Komiic/actions/runs/45673560888/artifacts/15051453189",
+  "ipaArtifactID": 15051453189,
+  "ipaArtifactZIPBytes": 1384934,
+  "ipaArtifactDigestFromGitHub": "sha256:ca5858246d46a510ef81bb5c663658953699d0ee61654100fef376961faba918",
+  "artifactURL": "https://github.com/hahahalucas/Komiic/actions/runs/45673560888/artifacts/15051573065",
+  "artifactID": 15051573065,
+  "artifactZIPBytes": 125819215,
+  "artifactDigestFromGitHub": "sha256:883b3262b27b84f2cd821b13cbd5de70fc5dccdac31b5bb098c1603f81d10a85",
+  "artifactExpiresAt": "2026-12-02T18:35:44Z",
+  "ipaFileInArtifact": "Komiic-iPhone-iPad-unsigned.ipa",
+  "ipa": {
+    "bundleIdentifier": "com.example.Komiic",
+    "version": "0.9.0",
+    "deviceFamilies": [
+      "iPhone",
+      "iPad"
+    ],
+    "minimumOS": "17.0",
+    "sdk": "iphoneos26.5",
+    "executableBytes": 5916384,
+    "executableSHA256": "a1447822d3b48e30d206eb730fdfa74b9fe8827fb4688079f3bb644a367c54d4",
+    "macho": [
+      {
+        "architecture": "arm64",
+        "platform": 2,
+        "minimumOS": "17.0.0",
+        "sdk": "26.5.0",
+        "swiftUILinked": true,
+        "codeSignatureCommand": false
+      }
+    ],
+    "signing": "unsigned",
+    "signatureStructurePresent": false,
+    "appleSignatureTrustCheckedByThisScript": false,
+    "installation": "Requires your own authorized signing before installation.",
+    "checks": [
+      "IPA layout",
+      "bundle plist",
+      "iPhone+iPad families",
+      "arm64 executable",
+      "iOS device platform",
+      "iOS SDK 26+",
+      "SwiftUI linkage",
+      "executable permission",
+      "signing structure"
+    ],
+    "ipaSHA256": "1373922c35696f6b097597b45807bf4fa63c1fd62bb43577ce96fe9b34f86261"
+  },
+  "tests": {
+    "countPerDevice": 118,
+    "total": 236,
+    "failures": 0,
+    "status": "passed",
+    "devices": [
+      "iPhone",
+      "iPad"
+    ],
+    "newTestsPerDevice": 23,
+    "replacedTestsPerDevice": 5
+  },
+  "swiftSourceFiles": 48,
+  "sourceMatchesWorkspaceAtUpload": true,
+  "publicAPIVerification": {
+    "checks": 6,
+    "status": "passed",
+    "artifactID": 15049919130
+  },
+  "localIPAVerification": "Not run; direct artifact download from this sandbox failed DNS resolution. Cloud IPA structure checks passed.",
+  "artifactDigestIndependentlyRecomputed": false,
+  "physicalDeviceAcceptance": "Not performed; physical-device pinch gestures, Dynamic Island layout and real-account restart acceptance remain manual checks.",
+  "previousFailedRun": 45671484596,
+  "previousFailure": "Legacy account-loader trailing closure matched the new session-scope parameter. Restored the legacy initializer and reran the complete suite successfully."
+}

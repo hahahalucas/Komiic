@@ -73,9 +73,9 @@
 
 ## 验证与构建
 
-0.9.0 已增加整话/双页缩放、缓存重启恢复、账号切换及会话续期回归测试，共 118 项/设备。Windows 工程结构与 Swift 语法检查通过；iPhone/iPad XCTest、设备 Release 编译和本版 IPA 校验待云端执行，状态见[验证记录](docs/Verification.md)。
+0.9.0 的 Windows 工程结构与 Swift 语法检查通过（48 个 Swift 文件）。Xcode 26.6 / iOS SDK 26.5 的 iPhone、iPad 模拟器各 118 项 XCTest 全部通过，共 236 项、零失败；真实设备 Release 编译及 IPA 校验通过。覆盖整话/双页缩放、缓存重启恢复、账号切换、会话续期及退出登录保护，完整证据见[验证记录](docs/Verification.md)。
 
-0.8.0 历史构建与下载链接保留在[构建说明](docs/IPA.md)。本版安装包将在本次构建及校验通过后提供。
+[下载 0.9.0 IPA（仅安装包，约 1.4 MB）](https://github.com/hahahalucas/Komiic/actions/runs/45673560888/artifacts/15051453189)，解压后使用 `Komiic-iPhone-iPad-unsigned.ipa`，安装前需自签。[完整测试、截图及构建日志](https://github.com/hahahalucas/Komiic/actions/runs/45673560888/artifacts/15051573065)另行提供。0.8.0 历史记录保留在[构建说明](docs/IPA.md)。
 
 本地环境为 Windows，可执行工程结构和 Swift 语法检查：
 
