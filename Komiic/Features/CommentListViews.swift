@@ -77,44 +77,41 @@ final class CommentListModel: ObservableObject {
     }
 }
 
-struct MyCommentsView: View {
+struct MyCommentsSection: View {
+    let refresh: Int
     @StateObject private var model: CommentListModel
 
-    init(mode: ComicContentMode) {
+    init(mode: ComicContentMode, refresh: Int) {
+        self.refresh = refresh
         _model = StateObject(wrappedValue: CommentListModel(mode: mode, source: .account))
     }
 
     var body: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 12) {
-                ForEach(model.comments) { comment in
-                    VStack(alignment: .leading, spacing: 9) {
-                        let comic = model.works[comment.comicId] ?? Comic(id: comment.comicId, title: "漫画 #\(comment.comicId)")
-                        NavigationLink(value: comic) {
-                            HStack(alignment: .firstTextBaseline) {
-                                Text(comic.title).font(.subheadline.weight(.semibold))
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                Image(systemName: "chevron.right").font(.caption.weight(.semibold))
-                            }
-                            .foregroundStyle(KomiicTheme.accent)
-                            .padding(.horizontal, 4).padding(.vertical, 5)
+        LazyVStack(alignment: .leading, spacing: 12) {
+            SectionHeading(title: "我的留言").accessibilityAddTraits(.isHeader)
+            ForEach(model.comments) { comment in
+                VStack(alignment: .leading, spacing: 9) {
+                    let comic = model.works[comment.comicId] ?? Comic(id: comment.comicId, title: "漫画 #\(comment.comicId)")
+                    NavigationLink(value: comic) {
+                        HStack(alignment: .firstTextBaseline) {
+                            Text(comic.title).font(.subheadline.weight(.semibold))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            Image(systemName: "chevron.right").font(.caption.weight(.semibold))
                         }
-                        CommentCard(comment: comment)
+                        .foregroundStyle(KomiicTheme.accent)
+                        .padding(.horizontal, 4).padding(.vertical, 5)
                     }
+                    CommentCard(comment: comment)
                 }
-                if model.loaded && model.comments.isEmpty && !model.hasMore && model.error == nil {
-                    ContentUnavailableView("还没有留言", systemImage: "bubble.left.and.bubble.right")
-                        .frame(maxWidth: .infinity, minHeight: 240)
-                }
-                CommentListFooter(model: model)
             }
-            .padding(18).frame(maxWidth: 760).frame(maxWidth: .infinity)
+            if model.loaded && model.comments.isEmpty && !model.hasMore && model.error == nil {
+                Label("还没有留言", systemImage: "bubble.left.and.bubble.right")
+                    .font(.subheadline).foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, minHeight: 78)
+            }
+            CommentListFooter(model: model)
         }
-        .background(KomiicTheme.canvas)
-        .navigationTitle("我的留言").navigationBarTitleDisplayMode(.inline)
-        .scrollBounceBehavior(.always, axes: .vertical)
-        .task { if !model.loaded { await model.load() } }
-        .refreshable { await model.load(reset: true) }
+        .task(id: refresh) { await model.load(reset: model.loaded) }
     }
 }
 
@@ -176,7 +173,9 @@ struct CommentCard: View {
     }
 
     private func avatar(_ author: CommentAuthor?, size: CGFloat) -> some View {
-        KomiicAvatar(name: author?.name ?? "", profileText: author?.profileText, url: author?.profileImageUrl, size: size)
+        KomiicAvatar(name: author?.name ?? "", profileText: author?.profileText,
+                     url: author?.profileImageUrl?.url, size: size,
+                     profileTextColor: author?.profileTextColor, profileBackgroundColor: author?.profileBackgroundColor)
     }
 
     private func quotedComment(_ quote: CommentQuote) -> some View {

@@ -152,7 +152,7 @@ final class KomiicAPITests: XCTestCase {
             let body: String
             switch operation {
             case "accountQuery":
-                body = #"{"data":{"account":{"id":"7","nickname":"测试","email":"test@example.invalid","dateCreated":"2026-01-01","warningPreferences":[{"tag":"血腥","action":"WARN"}]}}}"#
+                body = #"{"data":{"account":{"id":"7","nickname":"测试","email":"test@example.invalid","dateCreated":"2026-01-01T04:00:00Z","profileImageUrl":"","profileText":"测","profileTextColor":"\u0023fff","profileBackgroundColor":"\u0023315881","warningPreferences":[{"tag":"血腥","action":"WARN"}]}}}"#
             case "readingStats":
                 body = #"{"data":{"readingStats":{"comicsRead":9,"chaptersRead":42,"favoriteCount":3,"bookmarkCount":2,"folderCount":1,"followingFolderCount":5,"topCategories":[{"id":"1","name":"冒险","count":7}]}}}"#
             case "getImageLimit":
@@ -168,6 +168,11 @@ final class KomiicAPITests: XCTestCase {
         let profile = try XCTUnwrap(model.profile)
         let quota = try XCTUnwrap(profile.imageQuota)
         XCTAssertEqual(profile.username, "测试")
+        XCTAssertEqual(profile.id, "7")
+        XCTAssertEqual(profile.email, "test@example.invalid")
+        XCTAssertNil(profile.profileImageURL)
+        XCTAssertEqual(profile.profileText, "测")
+        XCTAssertEqual(profile.profileBackgroundColor, "#315881")
         XCTAssertEqual(profile.readingStats?.comicsRead, 9)
         XCTAssertEqual(quota.usage, 195)
         XCTAssertEqual(quota.limit, 800)
@@ -182,7 +187,8 @@ final class KomiicAPITests: XCTestCase {
     }
 
     @MainActor
-    func testUnavailableStatisticsKeepAccountIdentityAndImageQuotaVisible() async throws {
+    func testUnavailableStatisticsKeepIdentityAndQuotaVisibleAndRecoverOnReopening() async throws {
+        let statisticsAvailable = LockedBox(false)
         StubURLProtocol.handler = { request in
             let payload = try XCTUnwrap(try JSONSerialization.jsonObject(with: requestBody(request)) as? [String: Any])
             let body: String
@@ -191,6 +197,10 @@ final class KomiicAPITests: XCTestCase {
                 body = #"{"data":{"account":{"id":"7","nickname":"测试","email":"test@example.invalid"}}}"#
             case "getImageLimit":
                 body = #"{"data":{"account":{"id":"7"},"getImageLimit":{"limit":800,"usage":11,"resetInSeconds":5600}}}"#
+            case "readingStats" where statisticsAvailable.value:
+                body = #"{"data":{"readingStats":{"comicsRead":9,"chaptersRead":42,"favoriteCount":3,"bookmarkCount":2,"folderCount":1,"followingFolderCount":5,"topCategories":[{"id":"1","name":"冒险","count":7}]}}}"#
+            case "messageStats" where statisticsAvailable.value:
+                body = #"{"data":{"messageStats":{"totalMessages":4,"totalUpvotes":18}}}"#
             default:
                 body = #"{"data":null,"errors":[{"message":"Service unavailable"}]}"#
             }
@@ -204,6 +214,10 @@ final class KomiicAPITests: XCTestCase {
         XCTAssertEqual(model.profile?.imageQuota?.usage, 11)
         XCTAssertNil(model.profile?.readingStats)
         XCTAssertNil(model.profile?.messageStats)
+        statisticsAvailable.update { $0 = true }
+        await model.load(refreshQuota: true)
+        XCTAssertEqual(model.profile?.readingStats?.topCategories.first?.name, "冒险")
+        XCTAssertEqual(model.profile?.messageStats?.totalMessages, 4)
     }
 
     func testComicAndPersonalCommentsDecodeQuotesAndUseOfficialPagination() async throws {
@@ -218,24 +232,48 @@ final class KomiicAPITests: XCTestCase {
                 XCTAssertEqual(pagination["orderBy"] as? String, "DATE_UPDATED")
                 XCTAssertEqual(pagination["asc"] as? Bool, false)
                 XCTAssertEqual(pagination["offset"] as? Int, 30)
-                body = #"{"data":{"getMessagesByComicId":[null,{"id":"a","comicId":"book","message":"回复","dateCreated":"2026-11-12T06:40:52Z","replyTo":{"message":"原留言","account":{"nickname":"作者"}},"upCount":4,"downCount":1}]}}"#
+                body = #"""
+                    {"data":{"getMessagesByComicId":[null,
+                        {"id":"a","comicId":"book","message":"回复","dateCreated":"2026-11-12T06:40:52Z","deleted":false,
+                         "account":{"nickname":"读者","profileText":"读","profileImageUrl":"","profileBackgroundColor":"\u0023315881"},
+                         "replyTo":{"message":"原留言","deleted":false,"account":{"nickname":"作者","profileImageUrl":""}},"upCount":4,"downCount":1},
+                        {"id":"c","comicId":"book","message":"继续阅读","deleted":false,"dateCreated":"2026-11-11T06:40:52Z",
+                         "account":{"nickname":"读者二","profileImageUrl":"https://[invalid"},"replyTo":null,"upCount":0,"downCount":0},
+                        {"id":"d","comicId":"book","message":"另一条留言","deleted":false,"dateCreated":"2026-11-10T06:40:52Z",
+                         "account":{"nickname":"读者三","profileImageUrl":"https://example.invalid/avatar.webp"},"replyTo":null,"upCount":1,"downCount":0}
+                    ]}}
+                    """#
             case "myMessages":
                 let query = try XCTUnwrap(payload["query"] as? String)
                 XCTAssertTrue(query.contains("upCount: upvotes"))
                 XCTAssertEqual(variables["offset"] as? Int, 5)
-                body = #"{"data":{"myMessages":{"total":25,"messages":[{"id":"b","comicId":"book","deleted":true},null]}}}"#
+                body = #"""
+                    {"data":{"myMessages":{"total":25,"messages":[{"id":"b","comicId":"book","deleted":true},
+                        {"id":"e","comicId":"book","message":"自己的留言","deleted":false,"dateCreated":"2026-11-12T06:40:52Z",
+                         "account":{"nickname":"测试","profileText":"测","profileImageUrl":""},"replyTo":null,"upCount":7,"downCount":0},null]}}}
+                    """#
             default: throw URLError(.badServerResponse)
             }
             return (200, "application/json", Data(body.utf8))
         }
         let comic = try await api.comicComments(comicID: "book", offset: 30)
+        XCTAssertEqual(comic.comments.map(\.id), ["a", "c", "d"])
+        XCTAssertEqual(comic.comments.first?.message, "回复")
+        XCTAssertEqual(comic.comments.first?.account?.profileText, "读")
+        XCTAssertNil(comic.comments.first?.account?.profileImageUrl?.url)
+        XCTAssertNil(comic.comments.first?.replyTo?.account?.profileImageUrl?.url)
         XCTAssertEqual(comic.comments.first?.replyTo?.account?.name, "作者")
         XCTAssertEqual(comic.comments.first?.upCount, 4)
+        XCTAssertNil(comic.comments.first(where: { $0.id == "c" })?.account?.profileImageUrl?.url)
+        XCTAssertEqual(comic.comments.last?.account?.profileImageUrl?.url?.host, "example.invalid")
         XCTAssertNil(comic.nextOffset)
         let personal = try await api.myComments(offset: 5)
-        XCTAssertEqual(personal.comments.map(\.id), ["b"])
+        XCTAssertEqual(personal.comments.map(\.id), ["b", "e"])
         XCTAssertEqual(personal.comments.first?.isDeleted, true)
-        XCTAssertEqual(personal.nextOffset, 7)
+        XCTAssertEqual(personal.comments.last?.message, "自己的留言")
+        XCTAssertEqual(personal.comments.last?.upCount, 7)
+        XCTAssertNil(personal.comments.last?.account?.profileImageUrl?.url)
+        XCTAssertEqual(personal.nextOffset, 8)
     }
 
     func testPostingAndVotingOnCommentsUseOfficialVariables() async throws {

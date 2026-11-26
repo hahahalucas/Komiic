@@ -64,6 +64,7 @@ final class AccountProfileModel: ObservableObject {
     @Published private(set) var connected = false
     @Published private(set) var loading = false
     @Published private(set) var error: String?
+    @Published private(set) var loadingQuota = false
     @Published private(set) var quotaRefreshFailed = false
     private(set) var hasLoaded = false
     private let mode: ComicContentMode
@@ -101,7 +102,8 @@ final class AccountProfileModel: ObservableObject {
             if force, updatingQuota, !Task.isCancelled { await load(force: true) }
             return
         }
-        let needsProfile = force || !hasLoaded
+        let missingStatistics = profile.map { $0.readingStats == nil || $0.imageQuota == nil || $0.messageStats == nil } ?? (error != nil)
+        let needsProfile = force || !hasLoaded || (refreshQuota && statisticsAPI != nil && missingStatistics)
         guard needsProfile || (refreshQuota && profile != nil && statisticsAPI != nil) else { return }
         let id = generation
         if needsProfile {
@@ -144,13 +146,11 @@ final class AccountProfileModel: ObservableObject {
             saveProfile()
 
             if let statisticsAPI {
-                async let reading = try? statisticsAPI.accountReadingStats()
-                async let messages = try? statisticsAPI.accountMessageStats()
-                await loadImageQuota(using: statisticsAPI, generation: id)
-                let (readingStats, messageStats) = await (reading, messages)
+                async let reading: Void = loadReadingStats(using: statisticsAPI, generation: id)
+                async let messages: Void = loadMessageStats(using: statisticsAPI, generation: id)
+                async let quota: Void = loadImageQuota(using: statisticsAPI, generation: id)
+                _ = await (reading, messages, quota)
                 guard isCurrent(id) else { return }
-                if let readingStats { profile?.readingStats = readingStats }
-                if let messageStats { profile?.messageStats = messageStats }
                 saveProfile()
             }
         } catch is CancellationError {
@@ -166,8 +166,20 @@ final class AccountProfileModel: ObservableObject {
         }
     }
 
+    private func loadReadingStats(using api: KomiicAPI, generation id: UUID) async {
+        guard let stats = try? await api.accountReadingStats(), isCurrent(id) else { return }
+        profile?.readingStats = stats
+    }
+
+    private func loadMessageStats(using api: KomiicAPI, generation id: UUID) async {
+        guard let stats = try? await api.accountMessageStats(), isCurrent(id) else { return }
+        profile?.messageStats = stats
+    }
+
     private func loadImageQuota(using api: KomiicAPI, generation id: UUID) async {
-        guard let accountID = profile?.id else { return }
+        guard isCurrent(id), let accountID = profile?.id else { return }
+        loadingQuota = true
+        defer { if generation == id { loadingQuota = false } }
         let quota = try? await api.imageReadingQuota(accountID: accountID)
         guard isCurrent(id) else { return }
         quotaRefreshFailed = quota == nil
@@ -194,6 +206,7 @@ final class AccountProfileModel: ObservableObject {
         connected = false
         loading = false
         error = nil
+        loadingQuota = false
         quotaRefreshFailed = false
         hasLoaded = false
     }
@@ -203,6 +216,7 @@ final class AccountProfileModel: ObservableObject {
         guard scope != cachedScope else { return }
         generation = UUID(); request?.cancel(); request = nil
         profile = nil; connected = false; loading = false; error = nil; hasLoaded = false
+        loadingQuota = false
         quotaRefreshFailed = false
         cachedScope = scope
         restore()

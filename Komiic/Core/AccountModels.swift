@@ -28,6 +28,22 @@ struct ProfileCategoryCount: Codable, Identifiable, Sendable {
     var count: Int
 }
 
+/// The website sends an empty string when it renders a text avatar.
+struct OfficialProfileImage: Decodable, Sendable {
+    var url: URL?
+
+    init(from decoder: Decoder) throws {
+        let value = try decoder.singleValueContainer()
+        guard let string = try? value.decode(String.self),
+              let parsed = URL(string: string.trimmingCharacters(in: .whitespacesAndNewlines)),
+              parsed.scheme?.lowercased() == "https", let host = parsed.host, !host.isEmpty else {
+            url = nil
+            return
+        }
+        url = parsed
+    }
+}
+
 struct KomiicAccountProfile: Codable, Sendable {
     var id: String
     var username: String
@@ -36,12 +52,15 @@ struct KomiicAccountProfile: Codable, Sendable {
     var profileImageURL: URL?
     var profileText: String?
     var warningPreferences: [ContentWarningPreference]
+    var profileTextColor: String? = nil
+    var profileBackgroundColor: String? = nil
     var readingStats: AccountReadingStats? = nil
     var imageQuota: ImageReadingQuota? = nil
     var messageStats: AccountMessageStats? = nil
 
     private enum CodingKeys: String, CodingKey {
         case id, username, email, dateCreated, profileImageURL, profileText, warningPreferences
+        case profileTextColor, profileBackgroundColor
         case readingStats, imageQuota, messageStats
     }
 }
@@ -78,6 +97,8 @@ extension KomiicAccountProfile {
         dateCreated = try values.decodeIfPresent(String.self, forKey: .dateCreated)
         profileImageURL = try values.decodeIfPresent(URL.self, forKey: .profileImageURL)
         profileText = try values.decodeIfPresent(String.self, forKey: .profileText)
+        profileTextColor = try values.decodeIfPresent(String.self, forKey: .profileTextColor)
+        profileBackgroundColor = try values.decodeIfPresent(String.self, forKey: .profileBackgroundColor)
         warningPreferences = try values.decode([ContentWarningPreference].self, forKey: .warningPreferences)
         readingStats = try values.decodeIfPresent(AccountReadingStats.self, forKey: .readingStats)
         imageQuota = try values.decodeIfPresent(ImageReadingQuota.self, forKey: .imageQuota)

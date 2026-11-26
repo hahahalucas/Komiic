@@ -36,11 +36,12 @@ private struct AccountContentView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var website: WebDestination?
     @State private var showingMessages = false
+    @State private var messagesRefresh = 0
     @State private var signingOut = false
     private var profile: KomiicAccountProfile? { model.profile }
     private var connected: Bool { model.connected }
     private var loading: Bool { model.loading }
-    private var dashboardActive: Bool { isVisible && scenePhase == .active && website == nil && !showingMessages }
+    private var dashboardActive: Bool { isVisible && scenePhase == .active && website == nil }
     private var statColumns: [GridItem] {
         Array(repeating: GridItem(.flexible(), spacing: 12), count: dynamicTypeSize.isAccessibilitySize ? 1 : 2)
     }
@@ -56,6 +57,10 @@ private struct AccountContentView: View {
                 }
                 if let profile {
                     officialStats(profile)
+                    if showingMessages {
+                        MyCommentsSection(mode: settings.contentMode, refresh: messagesRefresh)
+                            .id("\(profile.id):\(content.revision)")
+                    }
                     categorySummary(profile.readingStats?.topCategories)
                     collectionLinks(profile)
                     Button { openWebsite("/settings", title: "账号资料") } label: {
@@ -81,13 +86,14 @@ private struct AccountContentView: View {
         .background(KomiicTheme.canvas)
         .navigationTitle("账号").navigationBarTitleDisplayMode(.inline)
         .scrollBounceBehavior(.always, axes: .vertical)
-        .refreshable { await loadProfile() }
+        .refreshable {
+            await loadProfile()
+            messagesRefresh += 1
+        }
         .task(id: "\(settings.contentMode.rawValue):\(content.revision):\(dashboardActive)") {
             if dashboardActive { await loadProfile(force: false) }
         }
-        .navigationDestination(isPresented: $showingMessages) {
-            MyCommentsView(mode: settings.contentMode).id(content.revision)
-        }
+        .onChange(of: content.revision) { _, _ in showingMessages = false }
         .sheet(item: $website) { destination in
             WebsiteView(url: destination.url, title: destination.title, onClose: {
                 Task { await loadProfile() }
@@ -109,7 +115,8 @@ private struct AccountContentView: View {
     private var profileHeader: some View {
         HStack(spacing: 18) {
             KomiicAvatar(name: profile?.username ?? "", profileText: profile?.profileText,
-                         url: profile?.profileImageURL, size: dynamicTypeSize.isAccessibilitySize ? 52 : 72)
+                         url: profile?.profileImageURL, size: dynamicTypeSize.isAccessibilitySize ? 52 : 72,
+                         profileTextColor: profile?.profileTextColor, profileBackgroundColor: profile?.profileBackgroundColor)
             VStack(alignment: .leading, spacing: 6) {
                 if let profile {
                     Text(profile.username.isEmpty ? "Komiic 账号" : profile.username).font(.title2.bold())
@@ -160,22 +167,24 @@ private struct AccountContentView: View {
                 if model.quotaRefreshFailed {
                     Text("显示上次读取的额度").font(.caption).foregroundStyle(.secondary)
                 }
-            } else if loading {
+            } else if loading || model.loadingQuota {
                 ProgressView().controlSize(.small)
             } else {
-                Text("额度暂不可用").font(.caption).foregroundStyle(.secondary)
+                Button("重新查询额度") { Task { await model.load(refreshQuota: true) } }
+                    .font(.caption)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).padding(16).komiicCard()
     }
 
     private func messagesCard(_ stats: AccountMessageStats?) -> some View {
-        Button { showingMessages = true } label: {
+        Button { withAnimation(.easeInOut(duration: 0.2)) { showingMessages.toggle() } } label: {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     Image(systemName: "bubble.left.and.bubble.right").font(.title3).foregroundStyle(KomiicTheme.accent)
                     Spacer(minLength: 4)
-                    Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                    Image(systemName: showingMessages ? "chevron.up" : "chevron.down")
+                        .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                 }
                 Text(stats?.totalMessages.formatted() ?? "—").font(.title2.bold().monospacedDigit())
                 Text("我的留言").font(.subheadline).foregroundStyle(.secondary)
@@ -189,6 +198,7 @@ private struct AccountContentView: View {
             .padding(16).komiicCard()
         }
         .buttonStyle(.plain)
+        .accessibilityValue(showingMessages ? "已展开" : "已收起")
     }
 
     private func stat(_ title: String, value: Int?, symbol: String) -> some View {

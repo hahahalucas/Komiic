@@ -30,7 +30,9 @@ struct CommentQuote: Decodable, Sendable {
 struct CommentAuthor: Decodable, Sendable {
     let nickname: String?
     let profileText: String?
-    var profileImageUrl: URL?
+    let profileTextColor: String?
+    let profileBackgroundColor: String?
+    var profileImageUrl: OfficialProfileImage?
 
     var name: String {
         let name = nickname?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -45,7 +47,7 @@ struct CommentPage: Sendable {
 
 extension KomiicAPI {
     private static let commentPageSize = 30
-    private static let commentAuthorFields = "nickname profileText profileImageUrl"
+    private static let commentAuthorFields = "nickname profileText profileTextColor profileBackgroundColor profileImageUrl"
 
     func comicComments(comicID: String, offset: Int) async throws -> CommentPage {
         let data: ComicCommentsResult = try await perform("getMessagesByComicId", query: """
@@ -72,7 +74,7 @@ extension KomiicAPI {
                     messages {
                         id comicId message deleted dateCreated upCount: upvotes downCount: downvotes
                         account { \(Self.commentAuthorFields) }
-                        replyTo { message deleted account { nickname } }
+                        replyTo { message deleted account { \(Self.commentAuthorFields) } }
                     }
                 }
             }
@@ -117,8 +119,12 @@ extension KomiicAPI {
 
     private func normalizedComment(_ comment: ComicComment) -> ComicComment {
         var result = comment
-        if let url = result.account?.profileImageUrl { result.account?.profileImageUrl = normalizedURL(url) }
-        if let url = result.replyTo?.account?.profileImageUrl { result.replyTo?.account?.profileImageUrl = normalizedURL(url) }
+        if let url = result.account?.profileImageUrl?.url {
+            result.account?.profileImageUrl?.url = normalizedURL(url)
+        }
+        if let url = result.replyTo?.account?.profileImageUrl?.url {
+            result.replyTo?.account?.profileImageUrl?.url = normalizedURL(url)
+        }
         return result
     }
 }

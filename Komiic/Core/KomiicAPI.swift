@@ -180,13 +180,15 @@ struct KomiicAPI: Sendable {
         do {
             accountData = try await perform("accountQuery", query: """
                 query accountQuery { account { id nickname email dateCreated profileImageUrl profileText
+                    profileTextColor profileBackgroundColor
                     warningPreferences { tag action } } }
                 """, variables: [:])
         } catch KomiicError.authenticationRequired { return nil }
         guard let account = accountData.account else { return nil }
         return KomiicAccountProfile(id: account.id, username: account.nickname ?? "", email: account.email,
-            dateCreated: account.dateCreated, profileImageURL: account.profileImageUrl.flatMap(normalizedURL),
-            profileText: account.profileText, warningPreferences: account.warningPreferences ?? [])
+            dateCreated: account.dateCreated, profileImageURL: (account.profileImageUrl?.url).flatMap(normalizedURL),
+            profileText: account.profileText, warningPreferences: account.warningPreferences ?? [],
+            profileTextColor: account.profileTextColor, profileBackgroundColor: account.profileBackgroundColor)
     }
 
     func accountReadingStats() async throws -> AccountReadingStats {
@@ -505,8 +507,10 @@ private struct AccountResult: Decodable {
         let nickname: String?
         let email: String?
         let dateCreated: String?
-        let profileImageUrl: URL?
+        let profileImageUrl: OfficialProfileImage?
         let profileText: String?
+        let profileTextColor: String?
+        let profileBackgroundColor: String?
         let warningPreferences: [ContentWarningPreference]?
     }
 }

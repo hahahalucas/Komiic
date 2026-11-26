@@ -79,6 +79,31 @@ jobs:
           xcodebuild -version
           xcrun --sdk iphoneos --show-sdk-version
 
+      - name: Decode live public comments with the app API
+        if: matrix.mode == 'full'
+        run: |
+          set -o pipefail
+          cat > "$RUNNER_TEMP/KomiicCommentCheck.swift" <<'SWIFT'
+          @main
+          enum KomiicCommentCheck {
+              enum ProbeError: Error { case emptyPage(ComicContentMode) }
+
+              static func main() async throws {
+                  for (mode, comicID) in [(ComicContentMode.general, "4632"), (.adult, "11521")] {
+                      let page = try await KomiicAPI(mode: mode).comicComments(comicID: comicID, offset: 0)
+                      guard !page.comments.isEmpty else { throw ProbeError.emptyPage(mode) }
+                      let textAvatars = page.comments.filter { $0.account?.profileImageUrl?.url == nil }.count
+                      print("\(mode.rawValue): decoded \(page.comments.count) public comments, \(textAvatars) with text avatars")
+                  }
+              }
+          }
+          SWIFT
+          xcrun swiftc -swift-version 5 -parse-as-library \
+            Komiic/Core/AccountModels.swift Komiic/Core/Models.swift Komiic/Core/KomiicAPI.swift \
+            Komiic/Core/OfficialCommentsAPI.swift Komiic/Core/SessionCookieStore.swift \
+            "$RUNNER_TEMP/KomiicCommentCheck.swift" -o "$RUNNER_TEMP/komiic-comment-check"
+          "$RUNNER_TEMP/komiic-comment-check" | tee "$RUNNER_TEMP/komiic-comment-api.log"
+
       - name: Run build script
         id: package
         env:
@@ -108,7 +133,9 @@ jobs:
         if: matrix.mode == 'full'
         env:
           ARTIFACT_DIRECTORY: ${{ steps.package.outputs.artifact_dir }}
-        run: git archive --format=zip --prefix=Komiic/ --output="$ARTIFACT_DIRECTORY/Komiic-source.zip" HEAD
+        run: |
+          git archive --format=zip --prefix=Komiic/ --output="$ARTIFACT_DIRECTORY/Komiic-source.zip" HEAD
+          cp "$RUNNER_TEMP/komiic-comment-api.log" "$ARTIFACT_DIRECTORY/comment-api.log"
 
       - name: Upload source, IPA, tests, screenshots and logs
         if: always() && matrix.mode == 'full'
