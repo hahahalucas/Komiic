@@ -28,6 +28,13 @@ enum ContentFilter: Int, CaseIterable, Identifiable, Codable, Sendable {
         case .explicit: return "5 级"
         }
     }
+
+    func matches(sexyLevel: Int?) -> Bool {
+        if self == .all { return true }
+        guard let sexyLevel else { return false }
+        if self == .levelFour { return sexyLevel >= rawValue }
+        return sexyLevel == rawValue
+    }
 }
 
 struct ComicAuthor: Codable, Hashable, Identifiable, Sendable {

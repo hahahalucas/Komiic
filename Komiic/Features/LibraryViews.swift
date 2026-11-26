@@ -155,7 +155,7 @@ struct ShelfDetailView: View {
                 if shelf.comics.isEmpty {
                     EmptyState(symbol: "books.vertical", title: "书柜还空着", message: "在漫画详情中选择「加入书柜」，开始收集。")
                 } else {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 105, maximum: 170), spacing: 10)], spacing: 16) {
+                    ComicGridLayout {
                         ForEach(shelf.comics.filter { !settings.shouldHide($0) && !library.isBlocked($0) }) { comic in
                             ComicActivation(comic: comic) { ComicCard(comic: comic) }.buttonStyle(.plain)
                                 .contextMenu {
@@ -188,37 +188,84 @@ struct ShelfDetailView: View {
 }
 
 struct HistoryView: View {
+    let filter: ContentFilter
+    let active: Bool
     @EnvironmentObject private var library: LibraryStore
     @EnvironmentObject private var settings: ReaderSettings
-    @Environment(\.komiicTheme) private var theme
-    private var visibleHistory: [ReadingProgress] {
+    @State private var ratings: [String: Int] = [:]
+    @State private var checkedRatingIDs: Set<String> = []
+    @State private var loadingRatings = false
+    @State private var refresh = 0
+
+    private struct RatingRequest: Equatable {
+        let comicIDs: [String]
+        let refresh: Int
+    }
+
+    private var recentReading: [ReadingProgress] {
         library.recentReading.filter { !settings.shouldHide($0.comic) && !library.isBlocked($0.comic) }
     }
 
     var body: some View {
-        let history = visibleHistory
+        let recent = recentReading
+        let history = recent.compactMap { entry -> ReadingProgress? in
+            var rated = entry
+            rated.comic.sexyLevel = entry.comic.sexyLevel ?? ratings[entry.id]
+            return filter.matches(sexyLevel: rated.comic.sexyLevel) ? rated : nil
+        }
+        let comicIDs = active ? recent.filter { $0.comic.sexyLevel == nil }.map(\.id) : []
         ScrollView {
-            VStack(spacing: 14) {
-                if history.isEmpty {
+            VStack(spacing: 18) {
+                if recent.isEmpty {
                     EmptyState(symbol: "clock.arrow.circlepath", title: "故事，从这里继续", message: "阅读漫画后，这里会自动记录你的进度。")
-                }
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 3), spacing: 18) {
-                    ForEach(history) { progress in
-                        ComicActivation(comic: progress.comic) {
-                            ComicCard(comic: progress.comic, progressLabel: "第 \(progress.page + 1) 页")
-                                .overlay(alignment: .bottom) {
-                                    if progress.totalPages > 0 {
-                                        ProgressView(value: progress.fraction).tint(theme.accent)
-                                    }
-                                }
+                } else if history.isEmpty && !loadingRatings {
+                    EmptyState(symbol: "line.3.horizontal.decrease", title: "该分级暂无阅读记录",
+                               message: "可以调整筛选，或下拉刷新分级。")
+                } else {
+                    ComicGridLayout {
+                        ForEach(history) { progress in
+                            ComicActivation(comic: progress.comic) {
+                                ComicCard(comic: progress.comic, readingProgress: progress)
+                            }
+                            .contextMenu { ComicContextMenu(comic: progress.comic) }
                         }
-                        .contextMenu { ComicContextMenu(comic: progress.comic) }
+                    }
+                    if filter != .all && loadingRatings {
+                        ProgressView("正在查询分级…").font(.caption).padding(16)
                     }
                 }
-            }.padding(16)
+            }
+            .padding(14)
+            .frame(maxWidth: 1_400)
+            .frame(maxWidth: .infinity)
         }
         .scrollBounceBehavior(.always, axes: .vertical)
-        .refreshable { await library.refreshOfficialLibrary() }
+        .refreshable {
+            await library.refreshOfficialLibrary()
+            checkedRatingIDs = Set(ratings.keys)
+            refresh += 1
+        }
+        .task(id: RatingRequest(comicIDs: comicIDs, refresh: refresh)) {
+            await loadRatings(for: comicIDs)
+        }
+    }
+
+    private func loadRatings(for ids: [String]) async {
+        let pending = ids.filter { !checkedRatingIDs.contains($0) }
+        loadingRatings = !pending.isEmpty
+        defer { if !Task.isCancelled { loadingRatings = false } }
+        let api = KomiicAPI(mode: settings.contentMode)
+        let batchSize = 12
+        for start in stride(from: 0, to: pending.count, by: batchSize) {
+            let batch = Array(pending[start..<min(start + batchSize, pending.count)])
+            do {
+                try Task.checkCancellation()
+                let result = try await api.contentRatings(comicIDs: batch)
+                try Task.checkCancellation()
+                ratings.merge(result) { _, latest in latest }
+                checkedRatingIDs.formUnion(batch)
+            } catch { return }
+        }
     }
 }
 

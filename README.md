@@ -1,8 +1,14 @@
-# Komiic for iOS 1.0.1
+# Komiic for iOS 1.0.2
 
-原生 SwiftUI 漫画客户端，当前版本 **1.0.1（build 13）**，支持 iPhone / iPad、iOS 17 及以上。使用 Apple 系统框架，无第三方运行时依赖。iOS 26 使用系统 Liquid Glass 导航及阅读控制条，旧系统保留兼容外观。
+原生 SwiftUI 漫画客户端，当前版本 **1.0.2（build 14）**，支持 iPhone / iPad、iOS 17 及以上。使用 Apple 系统框架，无第三方运行时依赖。iOS 26 使用 Liquid Glass 导航及阅读控制条，旧系统使用半透明材质。
 
 ## 本次更新
+
+- 首页栏目与底部导航使用独立的半透明玻璃按钮。左右滑动可依次切换最近更新、最近上架、当月最热、推荐漫画、最近阅读、喜爱、资料库和账号。
+- 最近阅读显示色情程度并支持同一套筛选。漫画网格在 iPhone 上为竖屏 3 列、横屏 5 列，在全屏 iPad 上为竖屏 5 列、横屏 7 列。
+- 图片额度由 Komiic 官网管理。额度用完后，已下载和仍在缓存中的图片可继续阅读。
+
+## 1.0.1（build 13）已有功能
 
 - 账号页移除「最常阅读分类」，最近阅读页移除副标题。
 - 在漫画详情的「加入书柜」列表点选书柜即可加入。再点已勾选的书柜会移出漫画并取消勾选。
@@ -90,6 +96,8 @@
 ## 验证与构建
 
 设备 IPA 与完整验证使用同一提交并行构建。完整验证增加了使用 App 的 API 解码器读取两个分区的公开评论。[云端构建列表](https://github.com/hahahalucas/Komiic/actions)
+
+1.0.1（build 13）的 iPhone 和 iPad 模拟器各通过 125 项 XCTest，设备 Release 编译和 IPA 校验也已通过。项目根目录中的 `Komiic-1.0.1-iPhone-iPad-unsigned.ipa` 安装前需自签。[1.0.1 验证记录](docs/Verification.md) · [下载 IPA 压缩包](https://github.com/hahahalucas/Komiic/actions/runs/45802337897/artifacts/15108890249)
 
 0.9.0 的 Windows 工程结构与 Swift 语法检查通过（48 个 Swift 文件）。Xcode 26.6 / iOS SDK 26.5 的 iPhone、iPad 模拟器各 118 项 XCTest 全部通过，共 236 项、零失败；真实设备 Release 编译及 IPA 校验通过。覆盖整话/双页缩放、缓存重启恢复、账号切换、会话续期及退出登录保护，完整证据见[验证记录](docs/Verification.md)。
 

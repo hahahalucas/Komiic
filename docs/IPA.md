@@ -4,9 +4,9 @@
 
 iPad 不强制全屏，声明全部四个方向以支持系统多任务与可变窗口。窗口中的方向和大小以 iPadOS 的规则为准；阅读方向偏好不能覆盖系统对窗口场景的限制。
 
-当前源码版本为 **1.0.1（build 13）**。完整验证使用 App 的 API 解码器读取两个分区的公开评论。[GitHub 构建列表](https://github.com/hahahalucas/Komiic/actions)
+当前源码版本为 **1.0.2（build 14）**。完整验证使用 App 的 API 解码器读取两个分区的公开评论。[GitHub 构建列表](https://github.com/hahahalucas/Komiic/actions)
 
-解压快速任务的产物，使用 `Komiic-iPhone-iPad-unsigned.ipa`。同一份包支持 iOS / iPadOS 17 及以上，安装前需自签。
+1.0.1（build 13）已完成设备 Release 编译。项目根目录保存了 `Komiic-1.0.1-iPhone-iPad-unsigned.ipa`，本机核对包内版本、arm64 iOS 设备代码及 iPhone/iPad 支持均通过。最低系统为 iOS/iPadOS 17，安装前需自签。[1.0.1 云端构建](https://github.com/hahahalucas/Komiic/actions/runs/45802337897) · [下载 IPA 压缩包](https://github.com/hahahalucas/Komiic/actions/runs/45802337897/artifacts/15108890249)
 
 0.1.0（build 11）的历史完整任务在 iPhone 与 iPad 模拟器各通过 122 项 XCTest，并保存源码、截图、日志和校验报告。[build 11 构建记录](https://github.com/hahahalucas/Komiic/actions/runs/45751647581)
 

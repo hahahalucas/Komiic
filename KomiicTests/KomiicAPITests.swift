@@ -142,6 +142,20 @@ final class KomiicAPITests: XCTestCase {
         XCTAssertEqual(history.first?.comic.contentMode, .adult)
     }
 
+    func testHistoryRatingsRequestDetailFieldsAndDistinguishZeroFromMissing() async throws {
+        StubURLProtocol.handler = { request in
+            let payload = try XCTUnwrap(try JSONSerialization.jsonObject(with: requestBody(request)) as? [String: Any])
+            let query = try XCTUnwrap(payload["query"] as? String)
+            XCTAssertEqual(payload["operationName"] as? String, "contentRatings")
+            XCTAssertEqual(payload["variables"] as? [String: String], ["id0": "first", "id1": "second", "id2": "third"])
+            XCTAssertTrue(query.contains("comic0: comicById(comicId: $id0) { sexyLevel }"))
+            XCTAssertFalse(query.contains("comicByIds"))
+            return (200, "application/json", Data(#"{"data":{"comic0":{"sexyLevel":4},"comic1":{"sexyLevel":0},"comic2":null}}"#.utf8))
+        }
+        let ratings = try await api.contentRatings(comicIDs: ["first", "second", "third"])
+        XCTAssertEqual(ratings, ["first": 4, "second": 0])
+    }
+
     @MainActor
     func testAccountProfileLoadsOfficialStatisticsAndRefreshesQuotaIndependently() async throws {
         let calls = LockedBox<[String]>([])

@@ -107,22 +107,38 @@ struct EmptyState: View {
 
 struct PillButton: View {
     let title: String
+    var symbol: String? = nil
     var selected = false
     let action: () -> Void
     @Environment(\.komiicTheme) private var theme
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
 
     var body: some View {
         Button(action: action) {
-            Text(title).font(.subheadline.weight(selected ? .semibold : .regular))
+            label
                 .lineLimit(1).minimumScaleFactor(0.75)
                 .padding(.horizontal, 4)
-                .frame(maxWidth: .infinity, minHeight: 44)
-                .foregroundStyle(selected ? theme.accent : Color.secondary)
+                .frame(maxWidth: .infinity, minHeight: symbol != nil && verticalSizeClass != .compact ? 52 : 44)
+                .foregroundStyle(selected ? theme.accent : Color.primary)
                 .background(selected ? theme.accentWash : Color.clear, in: Capsule())
+                .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .komiicGlass(cornerRadius: 24, interactive: true)
+        .komiicGlass(cornerRadius: 28, interactive: true, translucent: true)
+        .accessibilityLabel(title)
         .accessibilityAddTraits(selected ? [.isSelected] : [])
+    }
+
+    @ViewBuilder private var label: some View {
+        if let symbol {
+            let layout = verticalSizeClass == .compact ? AnyLayout(HStackLayout(spacing: 5)) : AnyLayout(VStackLayout(spacing: 3))
+            layout {
+                Image(systemName: symbol).font(.system(size: 17, weight: selected ? .semibold : .medium))
+                Text(title).font(.caption.weight(selected ? .semibold : .medium))
+            }
+        } else {
+            Text(title).font(.subheadline.weight(selected ? .semibold : .regular))
+        }
     }
 }
 
@@ -139,8 +155,8 @@ struct SectionHeading: View {
 }
 
 extension View {
-    func komiicGlass(cornerRadius: CGFloat = 24, interactive: Bool = false) -> some View {
-        modifier(KomiicGlassModifier(cornerRadius: cornerRadius, interactive: interactive))
+    func komiicGlass(cornerRadius: CGFloat = 24, interactive: Bool = false, translucent: Bool = false) -> some View {
+        modifier(KomiicGlassModifier(cornerRadius: cornerRadius, interactive: interactive, translucent: translucent))
     }
 
     @ViewBuilder func komiicGlassGroup(spacing: CGFloat = 12) -> some View {
@@ -175,6 +191,7 @@ private struct KomiicCardModifier: ViewModifier {
 private struct KomiicGlassModifier: ViewModifier {
     let cornerRadius: CGFloat
     let interactive: Bool
+    let translucent: Bool
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.komiicTheme) private var theme
 
@@ -183,9 +200,11 @@ private struct KomiicGlassModifier: ViewModifier {
             content.background(theme.card, in: RoundedRectangle(cornerRadius: cornerRadius))
                 .overlay(RoundedRectangle(cornerRadius: cornerRadius).stroke(KomiicTheme.line, lineWidth: 1))
         } else if #available(iOS 26.0, *) {
-            content.glassEffect(.regular.interactive(interactive), in: RoundedRectangle(cornerRadius: cornerRadius))
+            let glass: Glass = translucent ? .clear : .regular
+            content.glassEffect(glass.interactive(interactive), in: RoundedRectangle(cornerRadius: cornerRadius))
         } else {
-            content.background(.regularMaterial, in: RoundedRectangle(cornerRadius: cornerRadius))
+            let material: Material = translucent ? .ultraThinMaterial : .regularMaterial
+            content.background(material, in: RoundedRectangle(cornerRadius: cornerRadius))
         }
     }
 }

@@ -99,11 +99,7 @@ final class CatalogModel: ObservableObject {
     }
 }
 
-// The first primary category contains both update pages; the pager visits all five.
-private enum CatalogPage: String, CaseIterable, Identifiable {
-    case updated, newest, popular, recommended, history
-
-    var id: String { rawValue }
+private extension BrowsePage {
     var isUpdates: Bool { self == .updated || self == .newest }
     var feed: CatalogFeed? {
         switch self {
@@ -111,89 +107,77 @@ private enum CatalogPage: String, CaseIterable, Identifiable {
         case .newest: return .newest
         case .popular: return .popular
         case .recommended: return .recommended
-        case .history: return nil
+        case .history, .favorites, .library, .account: return nil
         }
     }
 }
 
 struct CatalogView: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let page: BrowsePage
+    let active: Bool
+    let filter: ContentFilter
+    let onSelect: (BrowsePage) -> Void
+    let onFilter: () -> Void
     @EnvironmentObject private var settings: ReaderSettings
     @EnvironmentObject private var content: AppContentStore
-    @State private var page: CatalogPage = .updated
-    @State private var filter: ContentFilter = .all
-    @State private var showFilter = false
-
-    private var pageSelection: Binding<CatalogPage> {
-        Binding(get: { page }, set: { select($0) })
-    }
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 6) {
-                PillButton(title: "最近更新", selected: page.isUpdates) { select(.updated) }
-                PillButton(title: "当月最热", selected: page == .popular) { select(.popular) }
-                PillButton(title: "推荐漫画", selected: page == .recommended) { select(.recommended) }
-                PillButton(title: "最近阅读", selected: page == .history) { select(.history) }
+        Group {
+            if let feed = page.feed {
+                CatalogFeedPage(feed: feed, filter: filter, active: active,
+                                model: content.catalog(feed: feed, mode: settings.contentMode))
+            } else {
+                HistoryView(filter: filter, active: active)
+                    .id(content.revision)
             }
-            .komiicGlassGroup(spacing: 6)
-            .padding(.horizontal, 12).padding(.vertical, 8)
-
-            Divider().opacity(0.4)
-            if page != .history { pageControls }
-
-            // Native paging tracks the drag continuously and settles onto the next page.
-            TabView(selection: $page) {
-                ForEach(CatalogPage.allCases) { item in
-                    Group {
-                        if let feed = item.feed {
-                            CatalogFeedPage(feed: feed, filter: filter, active: page == item,
-                                            model: content.catalog(feed: feed, mode: settings.contentMode))
-                        } else {
-                            HistoryView()
-                        }
-                    }
-                    .tag(item)
-                }
+        }
+        // Each page owns its inset so paging never resizes when the controls change.
+        .safeAreaInset(edge: .top, spacing: 0) {
+            VStack(spacing: 6) {
+                categories
+                pageControls
             }
-            .tabViewStyle(.page(indexDisplayMode: .never))
+            .padding(.horizontal, 14).padding(.vertical, 6)
         }
-        .sheet(isPresented: $showFilter) {
-            FilterSheet(selection: $filter)
-                .presentationDetents([.medium])
-                .presentationDragIndicator(.visible)
+    }
+
+    private var categories: some View {
+        HStack(spacing: 6) {
+            PillButton(title: "最近更新", selected: page.isUpdates) { onSelect(.updated) }
+            PillButton(title: "当月最热", selected: page == .popular) { onSelect(.popular) }
+            PillButton(title: "推荐漫画", selected: page == .recommended) { onSelect(.recommended) }
+            PillButton(title: "最近阅读", selected: page == .history) { onSelect(.history) }
         }
+        .komiicGlassGroup(spacing: 3)
     }
 
     private var pageControls: some View {
         HStack(spacing: 12) {
             if page.isUpdates {
-                Picker("更新方式", selection: pageSelection) {
-                    Text("最近更新").tag(CatalogPage.updated)
-                    Text("最近上架").tag(CatalogPage.newest)
+                HStack(spacing: 6) {
+                    PillButton(title: "最近更新", selected: page == .updated) { onSelect(.updated) }
+                    PillButton(title: "最近上架", selected: page == .newest) { onSelect(.newest) }
                 }
-                .pickerStyle(.segmented).frame(maxWidth: 230)
-            } else {
+                .komiicGlassGroup(spacing: 3)
+                .frame(maxWidth: 230)
+            } else if page != .history {
                 Text(page == .popular ? "这个月，大家都在看" : "发现下一部好漫画")
                     .font(.subheadline).foregroundStyle(.secondary)
                     .lineLimit(1).minimumScaleFactor(0.8)
             }
             Spacer(minLength: 0)
-            Button { showFilter = true } label: {
+            Button(action: onFilter) {
                 Image(systemName: filter == .all ? "line.3.horizontal.decrease" : "line.3.horizontal.decrease.circle.fill")
-                    .font(.system(size: 19)).padding(9)
+                    .font(.system(size: 19))
+                    .frame(width: 44, height: 44)
+                    .contentShape(Circle())
             }
-            .komiicActionStyle()
+            .buttonStyle(.plain)
+            .komiicGlass(interactive: true, translucent: true)
             .accessibilityLabel("筛选选项")
+            .accessibilityValue(filter.title)
         }
         .frame(minHeight: 44)
-        .padding(.horizontal, 14).padding(.vertical, 6)
-    }
-
-    private func select(_ destination: CatalogPage) {
-        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.3)) {
-            page = destination
-        }
     }
 }
 
@@ -243,7 +227,7 @@ private struct CatalogFeedPage: View {
     }
 }
 
-private struct FilterSheet: View {
+struct FilterSheet: View {
     @Binding var selection: ContentFilter
     @Environment(\.dismiss) private var dismiss
     @State private var draft: ContentFilter = .all
@@ -251,7 +235,7 @@ private struct FilterSheet: View {
         NavigationStack {
             Form {
                 Section("内容分级") {
-                    Picker("色气程度", selection: $draft) {
+                    Picker("色情程度", selection: $draft) {
                         ForEach(ContentFilter.allCases) { filter in
                             Text(filter.title).tag(filter)
                         }

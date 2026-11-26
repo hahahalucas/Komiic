@@ -38,6 +38,22 @@ final class ModelTests: XCTestCase {
         XCTAssertNil(unclassified.sexyLevel)
     }
 
+    func testRecentReadingFilterUsesCatalogRatingRules() {
+        let levels: [Int?] = [nil, 0, 1, 2, 3, 4, 5]
+        let expected: [[Int?]] = [levels, [0], [1], [2], [3], [4, 5], [5]]
+        for (filter, matchingLevels) in zip(ContentFilter.allCases, expected) {
+            XCTAssertEqual(levels.filter { filter.matches(sexyLevel: $0) }, matchingLevels, filter.title)
+        }
+    }
+
+    func testComicGridColumnsFollowDeviceAndWindowSize() {
+        XCTAssertEqual(ComicGridColumns.count(for: CGSize(width: 390, height: 750), isPad: false), 3)
+        XCTAssertEqual(ComicGridColumns.count(for: CGSize(width: 740, height: 360), isPad: false), 5)
+        XCTAssertEqual(ComicGridColumns.count(for: CGSize(width: 744, height: 1_070), isPad: true), 5)
+        XCTAssertEqual(ComicGridColumns.count(for: CGSize(width: 1_130, height: 720), isPad: true), 7)
+        XCTAssertEqual(ComicGridColumns.count(for: CGSize(width: 350, height: 725), isPad: true), 3)
+    }
+
     func testMissingIdentifierIsRejected() {
         XCTAssertThrowsError(try JSONDecoder().decode(Comic.self, from: Data(#"{"title":"没有编号"}"#.utf8)))
     }

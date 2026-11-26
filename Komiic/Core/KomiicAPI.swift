@@ -15,7 +15,7 @@ enum KomiicError: LocalizedError {
         case .invalidResponse: return "Komiic 返回了无法识别的数据，请重试或在官网检查连接。"
         case .http(let status): return "连接 Komiic 失败（HTTP \(status)）。"
         case .authenticationRequired: return "请先在账号页登录 Komiic，或重新登录以更新会话。"
-        case .imageQuotaExceeded: return "今日图片读取额度已用完，请登录官网查看额度，或在额度重置后重试。"
+        case .imageQuotaExceeded: return "Komiic 官网的图片读取额度已用完。已下载和仍在缓存中的图片可继续阅读。在线加载新图片请在额度重置后重试。"
         case .rateLimited: return "请求过于频繁，请稍后重试。"
         case .graphQL(let message): return message
         case .notFound: return "没有找到这部漫画。"
@@ -118,6 +118,23 @@ struct KomiicAPI: Sendable {
         let data: ComicResult = try await perform("comicById", query: query, variables: ["comicId": id])
         guard let comic = data.comicById else { throw KomiicError.notFound }
         return normalized(comic)
+    }
+
+    func contentRatings(comicIDs: [String]) async throws -> [String: Int] {
+        guard !comicIDs.isEmpty else { return [:] }
+        // The bulk comic resolver can return zero for rated titles. Request only the detail field.
+        let parameters = comicIDs.indices.map { "$id\($0): ID!" }.joined(separator: ", ")
+        let fields = comicIDs.indices.map { "comic\($0): comicById(comicId: $id\($0)) { sexyLevel }" }
+        let variables = Dictionary(uniqueKeysWithValues: comicIDs.enumerated().map { ("id\($0.offset)", $0.element as Any) })
+        let data: [String: ComicRating?] = try await perform("contentRatings", query:
+            "query contentRatings(\(parameters)) { \(fields.joined(separator: " ")) }", variables: variables)
+        var ratings: [String: Int] = [:]
+        for (index, id) in comicIDs.enumerated() {
+            if let comic = data["comic\(index)"] ?? nil, let level = comic.sexyLevel {
+                ratings[id] = level
+            }
+        }
+        return ratings
     }
 
     /// Both sections of the detail screen travel in one GraphQL round trip.
@@ -488,6 +505,7 @@ private struct AuthorSearchResult: Decodable {
     struct Matches: Decodable { let authors: [ComicAuthor?]? }
 }
 private struct ComicResult: Decodable { let comicById: Comic? }
+private struct ComicRating: Decodable { let sexyLevel: Int? }
 private struct ComicDetailsResult: Decodable {
     let comicById: Comic?
     let chaptersByComicId: [Chapter?]

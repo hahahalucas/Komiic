@@ -28,7 +28,7 @@ func compactCount(_ count: Int) -> String {
 
 struct ComicCard: View {
     let comic: Comic
-    var progressLabel: String? = nil
+    var readingProgress: ReadingProgress? = nil
     @EnvironmentObject private var library: LibraryStore
     @Environment(\.komiicTheme) private var theme
 
@@ -36,8 +36,8 @@ struct ComicCard: View {
         VStack(alignment: .leading, spacing: 0) {
             ZStack(alignment: .topLeading) {
                 ComicCover(comic: comic)
-                if let progressLabel {
-                    Text(progressLabel).font(.system(size: 10, weight: .medium))
+                if let readingProgress {
+                    Text("第 \(readingProgress.page + 1) 页").font(.system(size: 10, weight: .medium))
                         .padding(.horizontal, 7).padding(.vertical, 4)
                         .background(.regularMaterial, in: Capsule()).padding(6)
                 }
@@ -61,25 +61,66 @@ struct ComicCard: View {
                     Text(comic.updatedSummary).lineLimit(1)
                 }
                 .font(.system(size: 10)).foregroundStyle(.secondary)
+                if readingProgress != nil {
+                    Text(comic.sexyLevel.map { $0 == 0 ? "色情程度 · 无" : "色情程度 · \($0)/5" } ?? "暂无分级")
+                        .font(.caption2).foregroundStyle(.secondary)
+                        .lineLimit(1).minimumScaleFactor(0.75)
+                }
             }
             .padding(9)
         }
         .background(theme.card, in: RoundedRectangle(cornerRadius: 12))
         .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(alignment: .bottom) {
+            if let readingProgress, readingProgress.totalPages > 0 {
+                ProgressView(value: readingProgress.fraction).tint(theme.accent)
+            }
+        }
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(KomiicTheme.line, lineWidth: 0.5))
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
     }
 }
 
+enum ComicGridColumns {
+    static let spacing: CGFloat = 12
+
+    static func count(for size: CGSize, isPad: Bool) -> Int {
+        let landscape = size.width > size.height
+        guard isPad else { return landscape ? 5 : 3 }
+        let preferred = landscape ? 7 : 5
+        let fitting = Int((size.width - 36 + spacing) / (88 + spacing))
+        return max(1, min(preferred, fitting))
+    }
+}
+
+private struct ComicGridColumnsKey: EnvironmentKey {
+    static let defaultValue = 3
+}
+
+extension EnvironmentValues {
+    var comicGridColumns: Int {
+        get { self[ComicGridColumnsKey.self] }
+        set { self[ComicGridColumnsKey.self] = newValue }
+    }
+}
+
+struct ComicGridLayout<Content: View>: View {
+    @ViewBuilder var content: () -> Content
+    @Environment(\.comicGridColumns) private var columnCount
+
+    var body: some View {
+        let columns = Array(repeating: GridItem(.flexible(minimum: 0), spacing: ComicGridColumns.spacing), count: columnCount)
+        LazyVGrid(columns: columns, spacing: 18, content: content)
+    }
+}
+
 struct ComicGrid: View {
     let comics: [Comic]
     var onSelect: ((Comic) -> Void)? = nil
-    @Environment(\.horizontalSizeClass) private var sizeClass
     @EnvironmentObject private var settings: ReaderSettings
     var body: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: sizeClass == .regular ? 150 : 105,
-                                             maximum: sizeClass == .regular ? 220 : 170), spacing: 12)], spacing: 18) {
+        ComicGridLayout {
             ForEach(comics.filter { !settings.shouldHide($0) }) { comic in
                 ComicActivation(comic: comic, action: onSelect.map { select in { select(comic) } }) {
                     ComicCard(comic: comic)
