@@ -129,6 +129,7 @@ struct CatalogView: View {
     @EnvironmentObject private var content: AppContentStore
     @State private var filter: ContentFilter = .all
     @State private var showFilter = false
+    @State private var visiblePage: CatalogPage?
 
     private var pageSelection: Binding<CatalogPage> {
         Binding(get: { page }, set: { select($0) })
@@ -149,33 +150,68 @@ struct CatalogView: View {
             // Keep the pager's height stable when the selected page changes.
             pageControls
 
-            // Native paging tracks the drag continuously and settles onto the next page.
-            TabView(selection: $page) {
-                ForEach(CatalogPage.allCases) { item in
-                    Group {
-                        if let feed = item.feed {
-                            CatalogFeedPage(feed: feed, filter: filter, active: active && page == item,
-                                            model: content.catalog(feed: feed, mode: settings.contentMode))
-                        } else {
-                            HistoryView(filter: filter, active: active && page == item)
-                                .id(content.revision)
-                        }
-                    }
-                    .contentMargins(.bottom, bottomInset + Self.filterButtonSize + Self.filterButtonInset, for: .scrollContent)
-                    .tag(item)
-                }
-            }
-            .tabViewStyle(.page(indexDisplayMode: .never))
+            pager
         }
         .overlay(alignment: .bottomTrailing) {
-            filterButton.padding(.trailing, Self.filterButtonInset)
-                .padding(.bottom, bottomInset + Self.filterButtonInset)
+            filterButton.padding([.trailing, .bottom], Self.filterButtonInset)
         }
         .sheet(isPresented: $showFilter) {
             FilterSheet(selection: $filter)
                 .presentationDetents([.medium])
                 .presentationDragIndicator(.visible)
         }
+    }
+
+    @ViewBuilder private var pager: some View {
+        if #available(iOS 26.0, *) {
+            // A page-style TabView clips its hosted pages to the tab bar's safe area.
+            ScrollView(.horizontal) {
+                LazyHStack(spacing: 0) {
+                    ForEach(CatalogPage.allCases) { item in
+                        pageContent(item)
+                            .containerRelativeFrame([.horizontal, .vertical])
+                            .id(item)
+                    }
+                }
+                .scrollTargetLayout()
+            }
+            .scrollIndicators(.hidden, axes: .horizontal)
+            .scrollTargetBehavior(.viewAligned(limitBehavior: .alwaysByOne))
+            .scrollPosition(id: $visiblePage, anchor: .center)
+            .onScrollPhaseChange { _, phase in
+                // Commit the tab selection after the drag has settled.
+                if phase == .idle, let visiblePage, page != visiblePage {
+                    page = visiblePage
+                }
+            }
+            .onChange(of: page, initial: true) { _, destination in
+                guard visiblePage != destination else { return }
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.3)) {
+                    visiblePage = destination
+                }
+            }
+            .ignoresSafeArea(.container, edges: .bottom)
+        } else {
+            TabView(selection: $page) {
+                ForEach(CatalogPage.allCases) { item in
+                    pageContent(item).tag(item)
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+        }
+    }
+
+    private func pageContent(_ item: CatalogPage) -> some View {
+        Group {
+            if let feed = item.feed {
+                CatalogFeedPage(feed: feed, filter: filter, active: active && page == item,
+                                model: content.catalog(feed: feed, mode: settings.contentMode))
+            } else {
+                HistoryView(filter: filter, active: active && page == item)
+                    .id(content.revision)
+            }
+        }
+        .contentMargins(.bottom, bottomInset + Self.filterButtonSize + Self.filterButtonInset, for: .scrollContent)
     }
 
     private var pageControls: some View {

@@ -128,19 +128,6 @@ jobs:
           retention-days: 7
           compression-level: 0
 
-      - name: Capture the floating tab bar on iPhone and iPad
-        if: github.ref_name == 'codex/komiic-1.0.4'
-        run: bash scripts/capture_catalog_layout.sh "$RUNNER_TEMP/komiic-layout"
-
-      - name: Upload simulator screenshots
-        if: github.ref_name == 'codex/komiic-1.0.4'
-        uses: actions/upload-artifact@v7
-        with:
-          name: Komiic-layout-${{ github.run_number }}
-          path: ${{ runner.temp }}/komiic-layout/screenshots/*.png
-          if-no-files-found: error
-          retention-days: 7
-
       - name: Archive build source
         if: matrix.mode == 'full'
         env:
