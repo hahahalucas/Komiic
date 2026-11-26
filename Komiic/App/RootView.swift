@@ -35,9 +35,9 @@ struct RootView: View {
     @EnvironmentObject private var downloads: DownloadStore
     @EnvironmentObject private var settings: ReaderSettings
     @Environment(\.scenePhase) private var scenePhase
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.komiicTheme) private var theme
     @State private var selected: AppTab = .home
-    @State private var catalogPage: CatalogPage = .updated
+    @State private var catalogPage: CatalogPage = .all
     @State private var gridColumns = UIDevice.current.userInterfaceIdiom == .pad ? 5 : 3
     @State private var paths: [AppTab: NavigationPath] = [:]
     @State private var librarySection: LibrarySection = .shelves
@@ -47,16 +47,18 @@ struct RootView: View {
 
     var body: some View {
         let isPad = UIDevice.current.userInterfaceIdiom == .pad
-        Group {
-            if #available(iOS 26.0, *) {
-                modernTabs.tabBarMinimizeBehavior(.onScrollDown)
-            } else if #available(iOS 18.0, *) {
-                modernTabs
-            } else {
-                classicTabs
-            }
+        SlidingTabs(selection: $selected) { tab in
+            screen(tab)
+                .environmentObject(content)
+                .environmentObject(library)
+                .environmentObject(downloads)
+                .environmentObject(settings)
+                .environment(\.scenePhase, scenePhase)
+                .environment(\.komiicTheme, theme)
+                .environment(\.comicGridColumns, gridColumns)
+                .tint(theme.accent)
         }
-        .environment(\.comicGridColumns, gridColumns)
+        .ignoresSafeArea(.container)
         .onGeometryChange(for: Int.self) { geometry in
             let height = geometry.size.height + geometry.safeAreaInsets.top + geometry.safeAreaInsets.bottom
             let viewport = CGSize(width: geometry.size.width, height: height)
@@ -78,7 +80,7 @@ struct RootView: View {
             library.selectMode(mode)
             paths = [:]
             selected = .home
-            catalogPage = .updated
+            catalogPage = .all
             searchPrompt = false
         }
         .task { seenCompleted = completedIDs; started = true }
@@ -106,26 +108,6 @@ struct RootView: View {
             if phase == .active {
                 Task { await library.retryPendingOfficialChanges() }
                 downloads.applyCachePolicy(settings.cachePolicy)
-            }
-        }
-    }
-
-    // System navigation adopts Liquid Glass when linked with the iOS 26 SDK.
-    @available(iOS 18.0, *)
-    private var modernTabs: some View {
-        TabView(selection: $selected) {
-            Tab("首页", systemImage: AppTab.home.symbol, value: AppTab.home) { screen(.home) }
-            Tab("喜爱", systemImage: AppTab.favorites.symbol, value: AppTab.favorites) { screen(.favorites) }
-            Tab("资料库", systemImage: AppTab.library.symbol, value: AppTab.library) { screen(.library) }
-            Tab("账号", systemImage: AppTab.account.symbol, value: AppTab.account) { screen(.account) }
-        }
-        .tabViewStyle(.tabBarOnly)
-    }
-
-    private var classicTabs: some View {
-        TabView(selection: $selected) {
-            ForEach(AppTab.allCases) { tab in
-                screen(tab).tabItem { Label(tab.title, systemImage: tab.symbol) }.tag(tab)
             }
         }
     }
@@ -170,7 +152,7 @@ struct RootView: View {
 
     private func selectBySwipe(_ tab: AppTab) {
         if tab == .home { catalogPage = .history }
-        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.25)) { selected = tab }
+        selected = tab
     }
 }
 

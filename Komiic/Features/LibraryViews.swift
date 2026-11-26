@@ -213,7 +213,7 @@ struct HistoryView: View {
             rated.comic.sexyLevel = entry.comic.sexyLevel ?? ratings[entry.id]
             return filter.matches(sexyLevel: rated.comic.sexyLevel) ? rated : nil
         }
-        let comicIDs = active ? recent.filter { $0.comic.sexyLevel == nil }.map(\.id) : []
+        let comicIDs = active && filter != .all ? recent.filter { $0.comic.sexyLevel == nil }.map(\.id) : []
         ScrollView {
             VStack(spacing: 18) {
                 if recent.isEmpty {

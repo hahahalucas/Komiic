@@ -1,13 +1,17 @@
 import Foundation
 
 enum CatalogFeed: String, CaseIterable, Identifiable, Sendable {
-    case updated, newest, popular, recommended
+    case all
+    case popular = "totalPopular"
+    case recommended = "aiRecommended"
+
     var id: String { rawValue }
+    var supportsPagination: Bool { self != .recommended }
+
     var title: String {
         switch self {
-        case .updated: return "最新更新"
-        case .newest: return "最近上架"
-        case .popular: return "当月最热"
+        case .all: return "所有漫画"
+        case .popular: return "总最热"
         case .recommended: return "推荐漫画"
         }
     }

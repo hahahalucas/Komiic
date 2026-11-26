@@ -73,34 +73,45 @@ struct KomiicAPI: Sendable {
     }
 
     func catalog(feed: CatalogFeed, offset: Int = 0, filter: ContentFilter = .all) async throws -> [Comic] {
+        if feed == .recommended {
+            guard offset <= 0 else { return [] }
+            return try await personalizedRecommendations(filter: filter)
+        }
         var pagination: [String: Any] = [
             "limit": Self.pageSize, "offset": max(0, offset), "asc": false,
-            "orderBy": feed == .popular ? "MONTH_VIEWS" : feed == .newest ? "DATE_CREATED" : "DATE_UPDATED"
+            "orderBy": feed == .popular ? "VIEWS" : "DATE_UPDATED"
         ]
         if filter != .all { pagination["sexyLevel"] = filter.rawValue }
         let operation: String
-        let query: String
-        switch feed {
-        case .updated:
-            operation = "recentUpdate"
-            query = "query recentUpdate($pagination: Pagination!) { comics: recentUpdate(pagination: $pagination) { \(Self.comicFields) } }"
-        case .newest:
-            operation = "newComics"
-            query = "query newComics($pagination: Pagination!) { comics: comicByCategories(categoryId: [], pagination: $pagination) { \(Self.comicFields) } }"
-        case .popular:
+        let arguments: String
+        if feed == .popular {
             operation = "hotComics"
-            query = "query hotComics($pagination: Pagination!) { comics: hotComics(pagination: $pagination) { \(Self.comicFields) } }"
-        case .recommended:
-            operation = "topRecommendedComics"
-            query = "query topRecommendedComics($pagination: Pagination!, $adult: Boolean, $contentType: ContentType) { comics: topRecommendedComics(period: MONTH, pagination: $pagination, adult: $adult, contentType: $contentType) { \(Self.comicFields) } }"
+            arguments = "pagination: $pagination"
+        } else if mode == .adult {
+            operation = "comicByElements"
+            arguments = "elementIds: [], pagination: $pagination"
+        } else {
+            operation = "comicByCategories"
+            arguments = "categoryId: [], pagination: $pagination"
         }
-        var variables: [String: Any] = ["pagination": pagination]
-        if feed == .recommended {
-            variables["adult"] = mode == .adult
-            variables["contentType"] = mode.rawValue
-        }
-        let data: ComicList = try await perform(operation, query: query, variables: variables)
+        let query = "query \(operation)($pagination: Pagination!) { comics: \(operation)(\(arguments)) { \(Self.comicFields) } }"
+        let data: ComicList = try await perform(operation, query: query, variables: ["pagination": pagination])
         return data.comics.compactMap { $0 }.map(normalized)
+    }
+
+    private func personalizedRecommendations(filter: ContentFilter) async throws -> [Comic] {
+        let data: PersonalizedSuggestions = try await perform("personalizedSuggestions", query: """
+            query personalizedSuggestions($contentType: ContentType) {
+                personalizedSuggestions(limit: 25, excludeRead: true, excludeFavorites: true, contentType: $contentType) {
+                    comicId
+                }
+            }
+            """, variables: ["contentType": mode.rawValue])
+        let ids = data.personalizedSuggestions?.compactMap { $0?.comicId } ?? []
+        let suggestions = try await comics(ids: ids)
+        guard filter != .all else { return suggestions }
+        let ratings = try await contentRatings(comicIDs: suggestions.map(\.id))
+        return suggestions.filter { filter.matches(sexyLevel: ratings[$0.id]) }
     }
 
     /// Komiic search returns its complete result set; an optional offset returns its suffix.
@@ -496,6 +507,10 @@ private struct GraphQLError: Decodable {
     struct Extensions: Decodable { let code: String? }
 }
 private struct ComicList: Decodable { let comics: [Comic?] }
+private struct PersonalizedSuggestions: Decodable {
+    let personalizedSuggestions: [Suggestion?]?
+    struct Suggestion: Decodable { let comicId: String? }
+}
 private struct SearchResult: Decodable {
     let searchComicsAndAuthors: Matches
     struct Matches: Decodable { let comics: [Comic?]? }

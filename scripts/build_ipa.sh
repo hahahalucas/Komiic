@@ -4,11 +4,13 @@ set -euo pipefail
 
 SIGNING_MODE="unsigned"
 RUN_TESTS=1
+RUN_VERIFICATION=1
 for argument in "$@"; do
   case "$argument" in
     --unsigned) SIGNING_MODE="unsigned" ;;
     --signed) SIGNING_MODE="signed" ;;
     --skip-tests) RUN_TESTS=0 ;;
+    --package-only) RUN_TESTS=0; RUN_VERIFICATION=0 ;;
     *) printf 'Unknown argument: %s\n' "$argument" >&2; exit 2 ;;
   esac
 done
@@ -58,7 +60,9 @@ trap cleanup EXIT
 
 xcodebuild -version | tee "$ARTIFACT_DIR/xcode-version.txt"
 printf 'iOS SDK: %s\nSigning: %s\n' "$SDK_VERSION" "$SIGNING_MODE" | tee "$ARTIFACT_DIR/build-mode.txt"
-python3 scripts/verify_project.py | tee "$ARTIFACT_DIR/project-validation.txt"
+if [[ "$RUN_VERIFICATION" == "1" ]]; then
+  python3 scripts/verify_project.py | tee "$ARTIFACT_DIR/project-validation.txt"
+fi
 
 if [[ "$RUN_TESTS" == "1" ]]; then
   xcrun simctl list devices available --json > "$BUILD_ROOT/simulators.json"
@@ -187,8 +191,10 @@ else
 fi
 IPA_PATH="$ARTIFACT_DIR/Komiic-iPhone-iPad-$SIGNING_MODE.ipa"
 ditto -c -k --keepParent "$PACKAGE_ROOT/Payload" "$IPA_PATH"
-python3 scripts/verify_ipa.py "$IPA_PATH" --expected-signing "$SIGNING_MODE" --output "$ARTIFACT_DIR/ipa-verification.json"
-shasum -a 256 "$IPA_PATH" > "$ARTIFACT_DIR/SHA256SUMS.txt"
+if [[ "$RUN_VERIFICATION" == "1" ]]; then
+  python3 scripts/verify_ipa.py "$IPA_PATH" --expected-signing "$SIGNING_MODE" --output "$ARTIFACT_DIR/ipa-verification.json"
+  shasum -a 256 "$IPA_PATH" > "$ARTIFACT_DIR/SHA256SUMS.txt"
+fi
 if [[ "$SIGNING_MODE" == "unsigned" ]]; then
   printf 'This IPA contains real iPhone/iPad device code but is unsigned. It cannot be installed until you sign it with your own authorized Apple certificate and provisioning.\n' > "$ARTIFACT_DIR/INSTALLATION.txt"
 else

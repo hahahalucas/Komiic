@@ -30,6 +30,7 @@ on:
       - codex/komiic-1.0.2-rebuild
       - codex/komiic-1.0.3
       - codex/komiic-1.0.4
+      - codex/komiic-1.0.5
 
 permissions:
   contents: read
@@ -40,7 +41,7 @@ concurrency:
 
 jobs:
   api-contract:
-    if: ${{ !contains(fromJSON('["codex/komiic-1.0.2-rebuild", "codex/komiic-1.0.3", "codex/komiic-1.0.4"]'), github.ref_name) }}
+    if: ${{ !contains(fromJSON('["codex/komiic-1.0.2-rebuild", "codex/komiic-1.0.3", "codex/komiic-1.0.4", "codex/komiic-1.0.5"]'), github.ref_name) }}
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
@@ -64,7 +65,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        mode: ${{ fromJSON(contains(fromJSON('["codex/komiic-1.0.2-rebuild", "codex/komiic-1.0.3", "codex/komiic-1.0.4"]'), github.ref_name) && '["ipa"]' || '["ipa", "full"]') }}
+        mode: ${{ fromJSON(contains(fromJSON('["codex/komiic-1.0.2-rebuild", "codex/komiic-1.0.3", "codex/komiic-1.0.4", "codex/komiic-1.0.5"]'), github.ref_name) && '["ipa"]' || '["ipa", "full"]') }}
     env:
       KOMIIC_BUNDLE_ID: ${{ inputs.bundle_id || 'com.example.Komiic' }}
     steps:
@@ -74,6 +75,7 @@ jobs:
           persist-credentials: false
 
       - name: Verify Apple build tools
+        if: github.ref_name != 'codex/komiic-1.0.5'
         run: |
           xcodebuild -version
           xcrun --sdk iphoneos --show-sdk-version
@@ -113,7 +115,9 @@ jobs:
           IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
         run: |
           arguments=("--$SIGNING_MODE")
-          if [[ "$BUILD_MODE" == "ipa" ]]; then
+          if [[ "$GITHUB_REF_NAME" == "codex/komiic-1.0.5" ]]; then
+            arguments+=(--package-only)
+          elif [[ "$BUILD_MODE" == "ipa" ]]; then
             arguments+=(--skip-tests)
           fi
           bash scripts/build_ipa.sh "${arguments[@]}"

@@ -80,13 +80,17 @@ final class KomiicAPITests: XCTestCase {
         let pagination = try XCTUnwrap(variables["pagination"] as? [String: Any])
         XCTAssertEqual(pagination["offset"] as? Int, 30)
         XCTAssertEqual(pagination["sexyLevel"] as? Int, 0)
-        XCTAssertEqual(pagination["orderBy"] as? String, "MONTH_VIEWS")
+        XCTAssertEqual(pagination["orderBy"] as? String, "VIEWS")
     }
 
     func testAdultRecommendationsUseOfficialOriginAndExplicitContentType() async throws {
         let requests = LockedBox<[URLRequest]>([])
         StubURLProtocol.handler = { request in
             requests.update { $0.append(request) }
+            let payload = try XCTUnwrap(try JSONSerialization.jsonObject(with: requestBody(request)) as? [String: Any])
+            if payload["operationName"] as? String == "personalizedSuggestions" {
+                return (200, "application/json", Data(#"{"data":{"personalizedSuggestions":[{"comicId":"h1"}]}}"#.utf8))
+            }
             return (200, "application/json", Data(#"{"data":{"comics":[{"id":"h1","title":"分区测试","contentType":"H_MANGA","warnings":["獵奇"]}]}}"#.utf8))
         }
         let adultAPI = KomiicAPI(mode: .adult, session: session, imageSession: session)
@@ -95,7 +99,7 @@ final class KomiicAPITests: XCTestCase {
         XCTAssertEqual(request.url?.host, "h.komiic.cc")
         let payload = try XCTUnwrap(try JSONSerialization.jsonObject(with: requestBody(request)) as? [String: Any])
         let variables = try XCTUnwrap(payload["variables"] as? [String: Any])
-        XCTAssertEqual(variables["adult"] as? Bool, true)
+        XCTAssertEqual(payload["operationName"] as? String, "personalizedSuggestions")
         XCTAssertEqual(variables["contentType"] as? String, "H_MANGA")
         XCTAssertEqual(result.first?.contentMode, .adult)
         XCTAssertEqual(result.first?.warnings, ["獵奇"])
@@ -363,7 +367,7 @@ final class KomiicAPITests: XCTestCase {
             (200, "application/json", Data(#"{"data":{"comics":null},"errors":[{"message":"额度已用完","extensions":{"code":"QUOTA_EXCEEDED"}}]}"#.utf8))
         }
         do {
-            _ = try await api.catalog(feed: .updated)
+            _ = try await api.catalog(feed: .all)
             XCTFail("Expected quota error")
         } catch KomiicError.imageQuotaExceeded {
             // Expected: a partial-data decode error must not obscure the quota error.
@@ -386,7 +390,7 @@ final class KomiicAPITests: XCTestCase {
     func testHTTPRateLimitIsActionable() async {
         StubURLProtocol.handler = { _ in (429, "application/json", Data()) }
         do {
-            _ = try await api.catalog(feed: .updated)
+            _ = try await api.catalog(feed: .all)
             XCTFail("Expected rate limit")
         } catch KomiicError.rateLimited { }
         catch { XCTFail("Unexpected error: \(error)") }
@@ -484,7 +488,7 @@ final class KomiicAPITests: XCTestCase {
     func testInvalidJSONDoesNotBecomeAnEmptySuccess() async {
         StubURLProtocol.handler = { _ in (200, "text/html", Data("<html>unavailable</html>".utf8)) }
         do {
-            _ = try await api.catalog(feed: .updated)
+            _ = try await api.catalog(feed: .all)
             XCTFail("Expected invalid response")
         } catch KomiicError.invalidResponse { }
         catch { XCTFail("Unexpected error: \(error)") }
@@ -544,7 +548,7 @@ final class KomiicAPITests: XCTestCase {
             return (200, "application/json", Data(#"{"data":{"comics":[{"id":"restored","title":"恢复"}]}}"#.utf8))
         }
         let restored = KomiicAPI(baseURL: source, session: session, imageSession: session)
-        let comics = try await restored.catalog(feed: .updated)
+        let comics = try await restored.catalog(feed: .all)
         XCTAssertEqual(comics.first?.id, "restored")
         XCTAssertEqual(renewals.value, 1)
     }
@@ -582,7 +586,7 @@ final class KomiicAPITests: XCTestCase {
         }
         let refreshingAPI = KomiicAPI(baseURL: source, session: session, imageSession: session)
         let resultCount = try await withThrowingTaskGroup(of: Int.self) { group in
-            for _ in 0..<6 { group.addTask { try await refreshingAPI.catalog(feed: .updated).count } }
+            for _ in 0..<6 { group.addTask { try await refreshingAPI.catalog(feed: .all).count } }
             var total = 0
             for try await count in group { total += count }
             return total
@@ -611,21 +615,21 @@ final class KomiicAPITests: XCTestCase {
             return (200, "application/json", Data(#"{"data":{"comics":[{"id":"1","title":"测试"}]}}"#.utf8))
         }
         let testAPI = KomiicAPI(baseURL: source, session: session, imageSession: session)
-        let pending = Task { try await testAPI.catalog(feed: .updated) }
+        let pending = Task { try await testAPI.catalog(feed: .all) }
         for _ in 0..<100 where refreshes.value == 0 { try await Task.sleep(for: .milliseconds(1)) }
         XCTAssertEqual(refreshes.value, 1)
         await KomiicAPI.beginClearingSession()
         await KomiicAPI.beginClearingSession()
         await KomiicAPI.endClearingSession()
         do {
-            _ = try await testAPI.catalog(feed: .updated)
+            _ = try await testAPI.catalog(feed: .all)
             XCTFail("A second clearer must keep the refresh gate closed")
         } catch KomiicError.authenticationRequired {
         } catch { XCTFail("Unexpected clearing error: \(error)") }
         await KomiicAPI.endClearingSession()
         _ = await pending.result
         HTTPCookieStorage.shared.deleteCookie(cookie)
-        let comics = try await testAPI.catalog(feed: .updated)
+        let comics = try await testAPI.catalog(feed: .all)
         XCTAssertEqual(comics.map(\.id), ["1"])
         XCTAssertEqual(refreshes.value, 1)
     }

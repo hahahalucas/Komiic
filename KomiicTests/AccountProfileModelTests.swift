@@ -34,8 +34,8 @@ final class AccountProfileModelTests: XCTestCase {
 
     func testTabModelsRetainIdentityAndKeepContentModesSeparate() {
         let content = AppContentStore()
-        XCTAssertTrue(content.catalog(feed: .updated, mode: .general) === content.catalog(feed: .updated, mode: .general))
-        XCTAssertFalse(content.catalog(feed: .updated, mode: .adult) === content.catalog(feed: .updated, mode: .general))
+        XCTAssertTrue(content.catalog(feed: .all, mode: .general) === content.catalog(feed: .all, mode: .general))
+        XCTAssertFalse(content.catalog(feed: .all, mode: .adult) === content.catalog(feed: .all, mode: .general))
         XCTAssertTrue(content.account(mode: .general) === content.account(mode: .general))
         XCTAssertFalse(content.account(mode: .general) === content.account(mode: .adult))
     }

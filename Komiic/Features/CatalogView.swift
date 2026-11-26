@@ -74,7 +74,7 @@ final class CatalogModel: ObservableObject {
             let newComics = results.filter { ids.insert($0.id).inserted }
             if reset { comics = newComics }
             else { comics.append(contentsOf: newComics) }
-            hasMore = !results.isEmpty && !newComics.isEmpty
+            hasMore = feed.supportsPagination && !newComics.isEmpty
             loadedFilter = filter
             let saved = Array(comics.prefix(90))
             snapshots?.save(CatalogSnapshot(comics: saved, offset: comics.count > 90 ? saved.count : offset,
@@ -99,16 +99,15 @@ final class CatalogModel: ObservableObject {
     }
 }
 
-// The first primary category contains both update pages; the pager visits all five.
 enum CatalogPage: String, CaseIterable, Identifiable {
-    case updated, newest, popular, recommended, history
+    case all, popular, recommended, history
 
     var id: String { rawValue }
-    var isUpdates: Bool { self == .updated || self == .newest }
+    var title: String { feed?.title ?? "最近阅读" }
+
     var feed: CatalogFeed? {
         switch self {
-        case .updated: return .updated
-        case .newest: return .newest
+        case .all: return .all
         case .popular: return .popular
         case .recommended: return .recommended
         case .history: return nil
@@ -131,25 +130,17 @@ struct CatalogView: View {
     @State private var showFilter = false
     @State private var visiblePage: CatalogPage?
 
-    private var pageSelection: Binding<CatalogPage> {
-        Binding(get: { page }, set: { select($0) })
-    }
-
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 6) {
-                PillButton(title: "最近更新", selected: page.isUpdates) { select(.updated) }
-                PillButton(title: "当月最热", selected: page == .popular) { select(.popular) }
-                PillButton(title: "推荐漫画", selected: page == .recommended) { select(.recommended) }
-                PillButton(title: "最近阅读", selected: page == .history) { select(.history) }
+                ForEach(CatalogPage.allCases) { item in
+                    PillButton(title: item.title, selected: page == item) { select(item) }
+                }
             }
             .komiicGlassGroup(spacing: 6)
             .padding(.horizontal, 12).padding(.vertical, 8)
 
             Divider().opacity(0.4)
-            // Keep the pager's height stable when the selected page changes.
-            pageControls
-
             pager
         }
         .overlay(alignment: .bottomTrailing) {
@@ -215,25 +206,6 @@ struct CatalogView: View {
         .contentMargins(.bottom, bottomInset + Self.filterButtonSize + Self.filterButtonInset, for: .scrollContent)
     }
 
-    private var pageControls: some View {
-        HStack(spacing: 12) {
-            if page.isUpdates {
-                Picker("更新方式", selection: pageSelection) {
-                    Text("最近更新").tag(CatalogPage.updated)
-                    Text("最近上架").tag(CatalogPage.newest)
-                }
-                .pickerStyle(.segmented).frame(maxWidth: 230)
-            } else if page != .history {
-                Text(page == .popular ? "这个月，大家都在看" : "发现下一部好漫画")
-                    .font(.subheadline).foregroundStyle(.secondary)
-                    .lineLimit(1).minimumScaleFactor(0.8)
-            }
-            Spacer(minLength: 0)
-        }
-        .frame(minHeight: 44)
-        .padding(.horizontal, 14).padding(.vertical, 6)
-    }
-
     private var filterButton: some View {
         Button { showFilter = true } label: {
             Image(systemName: filter == .all ? "line.3.horizontal.decrease" : "line.3.horizontal.decrease.circle.fill")
@@ -279,7 +251,7 @@ private struct CatalogFeedPage: View {
                 } else if visibleComics.isEmpty {
                     EmptyState(symbol: "books.vertical", title: "暂无漫画", message: "尝试调整筛选，或稍后刷新。")
                 }
-                if model.hasMore, !model.loading, model.loadedFilter != nil, model.error == nil {
+                if feed.supportsPagination, model.hasMore, !model.loading, model.loadedFilter != nil, model.error == nil {
                     Button("载入更多") { Task { await model.load(feed: feed, filter: filter, reset: false) } }
                         .buttonStyle(.bordered).padding(.bottom, 14)
                 }

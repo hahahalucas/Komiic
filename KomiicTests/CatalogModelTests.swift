@@ -9,10 +9,10 @@ final class CatalogModelTests: XCTestCase {
             requests += 1
             return [Comic(id: "cached", title: "缓存")]
         }
-        await model.loadIfNeeded(feed: .updated, filter: .all)
-        await model.loadIfNeeded(feed: .updated, filter: .all)
+        await model.loadIfNeeded(feed: .all, filter: .all)
+        await model.loadIfNeeded(feed: .all, filter: .all)
         XCTAssertEqual(requests, 1)
-        await model.load(feed: .updated, filter: .all, reset: true)
+        await model.load(feed: .all, filter: .all, reset: true)
         XCTAssertEqual(requests, 2)
     }
     func testRepeatedRefreshRequestsFirstPageEvenWhenResultsAreUnchanged() async {
@@ -20,12 +20,12 @@ final class CatalogModelTests: XCTestCase {
         let model = CatalogModel { _, offset, filter in try await loader.fetch(offset: offset, filter: filter) }
         let comics = [Comic(id: "same", title: "没有更新的漫画")]
 
-        let initial = Task { await model.load(feed: .updated, filter: .all, reset: true) }
+        let initial = Task { await model.load(feed: .all, filter: .all, reset: true) }
         await loader.waitForRequestCount(1)
         await loader.complete(0, with: .success(comics))
         await initial.value
 
-        let refresh = Task { await model.load(feed: .updated, filter: .all, reset: true) }
+        let refresh = Task { await model.load(feed: .all, filter: .all, reset: true) }
         await loader.waitForRequestCount(2)
         XCTAssertTrue(model.loading)
         XCTAssertEqual(model.comics, comics)
@@ -45,12 +45,12 @@ final class CatalogModelTests: XCTestCase {
         let loader = ControlledCatalogLoader()
         let model = CatalogModel { _, offset, filter in try await loader.fetch(offset: offset, filter: filter) }
         let comics = [Comic(id: "old", title: "已有漫画")]
-        let initial = Task { await model.load(feed: .updated, filter: .all, reset: true) }
+        let initial = Task { await model.load(feed: .all, filter: .all, reset: true) }
         await loader.waitForRequestCount(1)
         await loader.complete(0, with: .success(comics))
         await initial.value
 
-        let refresh = Task { await model.load(feed: .updated, filter: .all, reset: true) }
+        let refresh = Task { await model.load(feed: .all, filter: .all, reset: true) }
         await loader.waitForRequestCount(2)
         await loader.complete(1, with: .failure(URLError(.timedOut)))
         await refresh.value
@@ -58,7 +58,7 @@ final class CatalogModelTests: XCTestCase {
         XCTAssertNotNil(model.error)
         XCTAssertFalse(model.loading)
 
-        let retry = Task { await model.load(feed: .updated, filter: .all, reset: true) }
+        let retry = Task { await model.load(feed: .all, filter: .all, reset: true) }
         await loader.waitForRequestCount(3)
         await loader.complete(2, with: .success(comics))
         await retry.value
@@ -69,7 +69,7 @@ final class CatalogModelTests: XCTestCase {
     func testRefreshSurvivesCancellationOfTheScrollViewTask() async {
         let loader = ControlledCatalogLoader()
         let model = CatalogModel { _, offset, filter in try await loader.fetch(offset: offset, filter: filter) }
-        let request = Task { await model.load(feed: .updated, filter: .all, reset: true) }
+        let request = Task { await model.load(feed: .all, filter: .all, reset: true) }
         await loader.waitForRequestCount(1)
         request.cancel()
         await loader.complete(0, with: .success([Comic(id: "loaded", title: "正常载入")]))
@@ -82,9 +82,9 @@ final class CatalogModelTests: XCTestCase {
     func testNewerFilterSupersedesAnOlderRefreshResponse() async {
         let loader = ControlledCatalogLoader()
         let model = CatalogModel { _, offset, filter in try await loader.fetch(offset: offset, filter: filter) }
-        let old = Task { await model.load(feed: .updated, filter: .all, reset: true) }
+        let old = Task { await model.load(feed: .all, filter: .all, reset: true) }
         await loader.waitForRequestCount(1)
-        let newest = Task { await model.load(feed: .updated, filter: .general, reset: true) }
+        let newest = Task { await model.load(feed: .all, filter: .general, reset: true) }
         await loader.waitForRequestCount(2)
         await loader.complete(1, with: .success([Comic(id: "new", title: "新筛选")]))
         await newest.value
@@ -97,7 +97,7 @@ final class CatalogModelTests: XCTestCase {
 
     func testNetworkCancellationOffersRetryInsteadOfAnEndlessInitialSpinner() async {
         let model = CatalogModel { _, _, _ in throw URLError(.cancelled) }
-        await model.load(feed: .updated, filter: .all, reset: true)
+        await model.load(feed: .all, filter: .all, reset: true)
         XCTAssertFalse(model.loading)
         XCTAssertNotNil(model.error)
         XCTAssertNil(model.loadedFilter)

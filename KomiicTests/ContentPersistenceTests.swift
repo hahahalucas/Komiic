@@ -9,7 +9,7 @@ final class ContentPersistenceTests: XCTestCase {
         let initial = CatalogModel(snapshots: cache, cachePrefix: "general:updated:user") { _, _, _ in
             [Comic(id: "saved", title: "已保存")]
         }
-        await initial.loadIfNeeded(feed: .updated, filter: .all)
+        await initial.loadIfNeeded(feed: .all, filter: .all)
         cache.flush()
         var requests = 0
         let restarted = CatalogModel(snapshots: AppSnapshotStore(directory: directory), cachePrefix: "general:updated:user") { _, _, _ in
@@ -17,9 +17,9 @@ final class ContentPersistenceTests: XCTestCase {
             return [Comic(id: "fresh", title: "新内容")]
         }
         XCTAssertEqual(restarted.comics.map(\.id), ["saved"])
-        await restarted.loadIfNeeded(feed: .updated, filter: .all)
+        await restarted.loadIfNeeded(feed: .all, filter: .all)
         XCTAssertEqual(requests, 0)
-        await restarted.load(feed: .updated, filter: .all, reset: true)
+        await restarted.load(feed: .all, filter: .all, reset: true)
         XCTAssertEqual(requests, 1)
         XCTAssertEqual(restarted.comics.map(\.id), ["fresh"])
     }
@@ -29,16 +29,16 @@ final class ContentPersistenceTests: XCTestCase {
         let model = CatalogModel(snapshots: cache, cachePrefix: "REGULAR:updated:A") { _, _, filter in
             filter == .all ? [Comic(id: "1", title: "一"), Comic(id: "2", title: "二")] : [Comic(id: "filtered", title: "筛选")]
         }
-        await model.loadIfNeeded(feed: .updated, filter: .all)
-        await model.loadIfNeeded(feed: .updated, filter: .general)
-        await model.loadIfNeeded(feed: .updated, filter: .all)
+        await model.loadIfNeeded(feed: .all, filter: .all)
+        await model.loadIfNeeded(feed: .all, filter: .general)
+        await model.loadIfNeeded(feed: .all, filter: .all)
         XCTAssertEqual(model.comics.map(\.id), ["1", "2"])
         var offset = -1
         let restarted = CatalogModel(snapshots: cache, cachePrefix: "REGULAR:updated:A") { _, start, _ in
             offset = start
             return [Comic(id: "3", title: "三")]
         }
-        await restarted.load(feed: .updated, filter: .all, reset: false)
+        await restarted.load(feed: .all, filter: .all, reset: false)
         XCTAssertEqual(offset, 2)
         XCTAssertEqual(restarted.comics.map(\.id), ["1", "2", "3"])
         XCTAssertTrue(CatalogModel(snapshots: cache, cachePrefix: "H_MANGA:updated:A").comics.isEmpty)
@@ -52,7 +52,7 @@ final class ContentPersistenceTests: XCTestCase {
             current = false
             return [Comic(id: "old", title: "旧账号")]
         }
-        await model.loadIfNeeded(feed: .updated, filter: .all)
+        await model.loadIfNeeded(feed: .all, filter: .all)
         cache.flush()
         XCTAssertTrue(model.comics.isEmpty)
         XCTAssertTrue(CatalogModel(snapshots: cache, cachePrefix: "old-account").comics.isEmpty)
@@ -69,7 +69,7 @@ final class ContentPersistenceTests: XCTestCase {
         let model = CatalogModel(snapshots: cache, cachePrefix: "key") { _, _, _ in
             requests += 1; return [Comic(id: "ok", title: "恢复")]
         }
-        await model.loadIfNeeded(feed: .updated, filter: .all)
+        await model.loadIfNeeded(feed: .all, filter: .all)
         XCTAssertEqual(requests, 1)
         XCTAssertEqual(model.comics.first?.id, "ok")
     }
