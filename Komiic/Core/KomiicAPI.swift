@@ -338,7 +338,7 @@ struct KomiicAPI: Sendable {
     }
 
     func diagnose() async throws -> String {
-        let comics = try await catalog(feed: .updated)
+        let comics = try await catalog(feed: .all)
         return "已连接 \(baseURL.host ?? "Komiic")，成功读取 \(comics.count) 部漫画。"
     }
 
