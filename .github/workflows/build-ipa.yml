@@ -25,6 +25,7 @@ on:
       - codex/komiic-0.7.0
       - codex/komiic-0.8.0
       - codex/komiic-0.9.0
+      - codex/komiic-0.1.0
 
 permissions:
   contents: read
@@ -52,8 +53,19 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
   build:
+    name: ${{ matrix.name }}
     runs-on: macos-26
-    timeout-minutes: 40
+    timeout-minutes: ${{ matrix.timeout }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - mode: ipa
+            name: Device IPA only
+            timeout: 20
+          - mode: full
+            name: Full iPhone and iPad verification
+            timeout: 40
     env:
       KOMIIC_BUNDLE_ID: ${{ inputs.bundle_id || 'com.example.Komiic' }}
     steps:
@@ -67,35 +79,42 @@ jobs:
           xcodebuild -version
           xcrun --sdk iphoneos --show-sdk-version
 
-      - name: Test on iPhone and iPad, build and verify real device IPA
+      - name: Run build script
         id: package
         env:
+          BUILD_MODE: ${{ matrix.mode }}
           SIGNING_MODE: ${{ inputs.signing || 'unsigned' }}
           IOS_CERTIFICATE_P12_BASE64: ${{ secrets.IOS_CERTIFICATE_P12_BASE64 }}
           IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
           IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
         run: |
-          if [[ "$SIGNING_MODE" == "signed" ]]; then
-            bash scripts/build_ipa.sh --signed
-          else
-            bash scripts/build_ipa.sh --unsigned
+          arguments=("--$SIGNING_MODE")
+          if [[ "$BUILD_MODE" == "ipa" ]]; then
+            arguments+=(--skip-tests)
           fi
+          bash scripts/build_ipa.sh "${arguments[@]}"
 
       - name: Upload installation IPA only
-        if: success()
+        if: matrix.mode == 'ipa'
         uses: actions/upload-artifact@v7
         with:
           name: Komiic-IPA-${{ github.run_number }}
-          path: build/ipa.*/artifacts/*.ipa
+          path: ${{ steps.package.outputs.ipa_path }}
           if-no-files-found: error
           retention-days: 7
           compression-level: 0
 
-      - name: Upload IPA, verification, screenshots and build logs
-        if: always()
+      - name: Archive build source
+        if: matrix.mode == 'full'
+        env:
+          ARTIFACT_DIRECTORY: ${{ steps.package.outputs.artifact_dir }}
+        run: git archive --format=zip --prefix=Komiic/ --output="$ARTIFACT_DIRECTORY/Komiic-source.zip" HEAD
+
+      - name: Upload source, IPA, tests, screenshots and logs
+        if: always() && matrix.mode == 'full'
         uses: actions/upload-artifact@v7
         with:
-          name: Komiic-iPhone-iPad-${{ inputs.signing || 'unsigned' }}-${{ github.run_number }}
+          name: Komiic-full-verification-${{ github.run_number }}
           path: build/ipa.*/artifacts/
           if-no-files-found: warn
           retention-days: 7
@@ -105,6 +124,9 @@ jobs:
         if: success()
         env:
           ARTIFACT_DIRECTORY: ${{ steps.package.outputs.artifact_dir }}
+          BUILD_MODE: ${{ matrix.mode }}
         run: |
           cat "$ARTIFACT_DIRECTORY/INSTALLATION.txt" >> "$GITHUB_STEP_SUMMARY"
-          printf '\nIncludes iPhone and iPad simulator screenshots, XCTest results, a device-code verification report, and SHA-256.\n' >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$BUILD_MODE" == "full" ]]; then
+            printf '\nIncludes source, iPhone and iPad simulator screenshots, XCTest results, a device-code verification report, and SHA-256.\n' >> "$GITHUB_STEP_SUMMARY"
+          fi

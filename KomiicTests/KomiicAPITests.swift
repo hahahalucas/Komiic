@@ -142,24 +142,126 @@ final class KomiicAPITests: XCTestCase {
         XCTAssertEqual(history.first?.comic.contentMode, .adult)
     }
 
-    func testAccountProfileAggregatesActualOfficialStatistics() async throws {
+    @MainActor
+    func testAccountProfileLoadsOfficialStatisticsAndRefreshesQuotaIndependently() async throws {
+        let calls = LockedBox<[String]>([])
         StubURLProtocol.handler = { request in
             let payload = try XCTUnwrap(try JSONSerialization.jsonObject(with: requestBody(request)) as? [String: Any])
-            if payload["operationName"] as? String == "accountQuery" {
-                return (200, "application/json", Data(#"{"data":{"account":{"id":"7","nickname":"测试","email":"test@example.invalid","dateCreated":"2026-01-01","warningPreferences":[{"tag":"血腥","action":"WARN"}]}}}"#.utf8))
+            let operation = try XCTUnwrap(payload["operationName"] as? String)
+            calls.update { $0.append(operation) }
+            let body: String
+            switch operation {
+            case "accountQuery":
+                body = #"{"data":{"account":{"id":"7","nickname":"测试","email":"test@example.invalid","dateCreated":"2026-01-01","warningPreferences":[{"tag":"血腥","action":"WARN"}]}}}"#
+            case "readingStats":
+                body = #"{"data":{"readingStats":{"comicsRead":9,"chaptersRead":42,"favoriteCount":3,"bookmarkCount":2,"folderCount":1,"followingFolderCount":5,"topCategories":[{"id":"1","name":"冒险","count":7}]}}}"#
+            case "getImageLimit":
+                body = #"{"data":{"account":{"id":"7"},"getImageLimit":{"limit":800,"usage":195,"resetInSeconds":"5700"}}}"#
+            case "messageStats":
+                body = #"{"data":{"messageStats":{"totalMessages":4,"totalUpvotes":18}}}"#
+            default: throw URLError(.badServerResponse)
             }
-            return (200, "application/json", Data(#"{"data":{"readingStats":{"comicsRead":9,"chaptersRead":42,"favoriteCount":3,"bookmarkCount":2,"folderCount":1,"followingFolderCount":5,"topCategories":[{"id":"1","name":"冒险","count":7}]},"getImageLimit":{"limit":800,"usage":195,"resetInSeconds":"5700"},"messageStats":{"totalMessages":4,"totalUpvotes":18}}}"#.utf8))
+            return (200, "application/json", Data(body.utf8))
         }
-        let fetched = try await api.accountProfile()
-        let profile = try XCTUnwrap(fetched)
+        let model = AccountProfileModel(mode: .general, snapshots: nil, sessionScope: { nil }, api: api)
+        await model.load()
+        let profile = try XCTUnwrap(model.profile)
+        let quota = try XCTUnwrap(profile.imageQuota)
         XCTAssertEqual(profile.username, "测试")
-        XCTAssertEqual(profile.readComicCount, 9)
-        XCTAssertEqual(profile.imageReadCount, 195)
-        XCTAssertEqual(profile.imageReadLimit, 800)
-        XCTAssertEqual(profile.commentLikes, 18)
-        XCTAssertEqual(profile.topCategories.first?.name, "冒险")
+        XCTAssertEqual(profile.readingStats?.comicsRead, 9)
+        XCTAssertEqual(quota.usage, 195)
+        XCTAssertEqual(quota.limit, 800)
+        XCTAssertEqual(quota.fractionUsed, 195.0 / 800.0, accuracy: 0.0001)
+        XCTAssertEqual(profile.messageStats?.totalUpvotes, 18)
+        XCTAssertEqual(profile.readingStats?.topCategories.first?.name, "冒险")
         XCTAssertEqual(profile.warningPreferences.first?.action, .warn)
-        XCTAssertEqual(profile.resetAt.timeIntervalSinceNow, 5700, accuracy: 5)
+        XCTAssertEqual(quota.resetAt.timeIntervalSinceNow, 5700, accuracy: 5)
+        calls.update { $0.removeAll() }
+        await model.load(refreshQuota: true)
+        XCTAssertEqual(calls.value, ["getImageLimit"])
+    }
+
+    @MainActor
+    func testUnavailableStatisticsKeepAccountIdentityAndImageQuotaVisible() async throws {
+        StubURLProtocol.handler = { request in
+            let payload = try XCTUnwrap(try JSONSerialization.jsonObject(with: requestBody(request)) as? [String: Any])
+            let body: String
+            switch payload["operationName"] as? String {
+            case "accountQuery":
+                body = #"{"data":{"account":{"id":"7","nickname":"测试","email":"test@example.invalid"}}}"#
+            case "getImageLimit":
+                body = #"{"data":{"account":{"id":"7"},"getImageLimit":{"limit":800,"usage":11,"resetInSeconds":5600}}}"#
+            default:
+                body = #"{"data":null,"errors":[{"message":"Service unavailable"}]}"#
+            }
+            return (200, "application/json", Data(body.utf8))
+        }
+        let model = AccountProfileModel(mode: .general, snapshots: nil, sessionScope: { nil }, api: api)
+        await model.load()
+        XCTAssertTrue(model.connected)
+        XCTAssertEqual(model.profile?.id, "7")
+        XCTAssertEqual(model.profile?.email, "test@example.invalid")
+        XCTAssertEqual(model.profile?.imageQuota?.usage, 11)
+        XCTAssertNil(model.profile?.readingStats)
+        XCTAssertNil(model.profile?.messageStats)
+    }
+
+    func testComicAndPersonalCommentsDecodeQuotesAndUseOfficialPagination() async throws {
+        StubURLProtocol.handler = { request in
+            let payload = try XCTUnwrap(try JSONSerialization.jsonObject(with: requestBody(request)) as? [String: Any])
+            let variables = try XCTUnwrap(payload["variables"] as? [String: Any])
+            let body: String
+            switch payload["operationName"] as? String {
+            case "getMessagesByComicId":
+                XCTAssertEqual(variables["comicId"] as? String, "book")
+                let pagination = try XCTUnwrap(variables["pagination"] as? [String: Any])
+                XCTAssertEqual(pagination["orderBy"] as? String, "DATE_UPDATED")
+                XCTAssertEqual(pagination["asc"] as? Bool, false)
+                XCTAssertEqual(pagination["offset"] as? Int, 30)
+                body = #"{"data":{"getMessagesByComicId":[null,{"id":"a","comicId":"book","message":"回复","dateCreated":"2026-11-12T06:40:52Z","replyTo":{"message":"原留言","account":{"nickname":"作者"}},"upCount":4,"downCount":1}]}}"#
+            case "myMessages":
+                let query = try XCTUnwrap(payload["query"] as? String)
+                XCTAssertTrue(query.contains("upCount: upvotes"))
+                XCTAssertEqual(variables["offset"] as? Int, 5)
+                body = #"{"data":{"myMessages":{"total":25,"messages":[{"id":"b","comicId":"book","deleted":true},null]}}}"#
+            default: throw URLError(.badServerResponse)
+            }
+            return (200, "application/json", Data(body.utf8))
+        }
+        let comic = try await api.comicComments(comicID: "book", offset: 30)
+        XCTAssertEqual(comic.comments.first?.replyTo?.account?.name, "作者")
+        XCTAssertEqual(comic.comments.first?.upCount, 4)
+        XCTAssertNil(comic.nextOffset)
+        let personal = try await api.myComments(offset: 5)
+        XCTAssertEqual(personal.comments.map(\.id), ["b"])
+        XCTAssertEqual(personal.comments.first?.isDeleted, true)
+        XCTAssertEqual(personal.nextOffset, 7)
+    }
+
+    func testPostingAndVotingOnCommentsUseOfficialVariables() async throws {
+        let replies = LockedBox<[String]>([])
+        StubURLProtocol.handler = { request in
+            let payload = try XCTUnwrap(try JSONSerialization.jsonObject(with: requestBody(request)) as? [String: Any])
+            let variables = try XCTUnwrap(payload["variables"] as? [String: Any])
+            switch payload["operationName"] as? String {
+            case "addMessageToComic":
+                XCTAssertEqual(variables["comicId"] as? String, "book")
+                XCTAssertEqual(variables["message"] as? String, "留言内容")
+                let reply = try XCTUnwrap(variables["replyToId"] as? String)
+                replies.update { $0.append(reply) }
+                return (200, "application/json", Data(#"{"data":{"addMessageToComic":{"id":"b","comicId":"book","reviewing":true}}}"#.utf8))
+            case "voteMessage":
+                XCTAssertEqual(variables["messageId"] as? String, "original")
+                XCTAssertEqual(variables["up"] as? Bool, false)
+                return (200, "application/json", Data(#"{"data":{"voteMessage":true}}"#.utf8))
+            default: throw URLError(.badServerResponse)
+            }
+        }
+        let comment = try await api.postComment(comicID: "book", message: "留言内容", replyingTo: nil)
+        XCTAssertEqual(comment.reviewing, true)
+        _ = try await api.postComment(comicID: "book", message: "留言内容", replyingTo: "original")
+        try await api.voteOnComment(id: "original", up: false)
+        XCTAssertEqual(replies.value, ["0", "original"])
     }
 
     func testAdultProfileKeepsInstanceOriginAndUnauthenticatedStateIsNil() async throws {

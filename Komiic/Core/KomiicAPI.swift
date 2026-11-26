@@ -175,35 +175,44 @@ struct KomiicAPI: Sendable {
         } catch KomiicError.authenticationRequired { return nil }
     }
 
-    func accountProfile(mode: ComicContentMode? = nil) async throws -> KomiicAccountProfile? {
-        // Account details are shared; reading statistics use the selected site's origin.
-        let selectedMode = mode ?? self.mode
-        let api = selectedMode == self.mode ? self : KomiicAPI(mode: selectedMode, session: session, imageSession: imageSession)
+    func accountProfile() async throws -> KomiicAccountProfile? {
         let accountData: AccountResult
         do {
-            accountData = try await api.perform("accountQuery", query: """
+            accountData = try await perform("accountQuery", query: """
                 query accountQuery { account { id nickname email dateCreated profileImageUrl profileText
                     warningPreferences { tag action } } }
                 """, variables: [:])
         } catch KomiicError.authenticationRequired { return nil }
         guard let account = accountData.account else { return nil }
-        let stats: ProfileStatsResult = try await api.perform("profileStats", query: """
-            query profileStats {
+        return KomiicAccountProfile(id: account.id, username: account.nickname ?? "", email: account.email,
+            dateCreated: account.dateCreated, profileImageURL: account.profileImageUrl.flatMap(normalizedURL),
+            profileText: account.profileText, warningPreferences: account.warningPreferences ?? [])
+    }
+
+    func accountReadingStats() async throws -> AccountReadingStats {
+        let data: ReadingStatsResult = try await perform("readingStats", query: """
+            query readingStats {
                 readingStats { comicsRead chaptersRead favoriteCount bookmarkCount folderCount followingFolderCount
                     topCategories { id: categoryId name: categoryName count } }
-                getImageLimit { limit usage resetInSeconds }
-                messageStats { totalMessages totalUpvotes }
             }
             """, variables: [:])
-        return KomiicAccountProfile(id: account.id, username: account.nickname, email: account.email,
-            dateCreated: account.dateCreated, profileImageURL: account.profileImageUrl, profileText: account.profileText,
-            readComicCount: stats.readingStats.comicsRead, readChapterCount: stats.readingStats.chaptersRead,
-            imageReadCount: stats.getImageLimit.usage, imageReadLimit: stats.getImageLimit.limit,
-            resetAt: Date().addingTimeInterval(TimeInterval(stats.getImageLimit.resetInSeconds) ?? 0),
-            commentCount: stats.messageStats.totalMessages, commentLikes: stats.messageStats.totalUpvotes,
-            favoriteCount: stats.readingStats.favoriteCount, bookmarkCount: stats.readingStats.bookmarkCount,
-            folderCount: stats.readingStats.folderCount, followedFolderCount: stats.readingStats.followingFolderCount,
-            topCategories: stats.readingStats.topCategories, warningPreferences: account.warningPreferences ?? [])
+        return data.readingStats
+    }
+
+    func imageReadingQuota(accountID: String) async throws -> ImageReadingQuota {
+        // The quota field alone can return a visitor's allowance after a session expires.
+        let data: ImageLimitResult = try await perform("getImageLimit", query:
+            "query getImageLimit { account { id } getImageLimit { limit usage resetInSeconds } }", variables: [:])
+        guard data.account?.id == accountID else { throw KomiicError.authenticationRequired }
+        let quota = data.getImageLimit
+        return ImageReadingQuota(usage: quota.usage, limit: quota.limit,
+                                 resetAt: Date().addingTimeInterval(quota.resetInSeconds))
+    }
+
+    func accountMessageStats() async throws -> AccountMessageStats {
+        let data: MessageStatsResult = try await perform("messageStats", query:
+            "query messageStats { messageStats { totalMessages totalUpvotes } }", variables: [:])
+        return data.messageStats
     }
 
     func warningPreferences() async throws -> [ContentWarningPreference] {
@@ -374,7 +383,7 @@ struct KomiicAPI: Sendable {
     }
 
     /// The official client performs this rewrite for regional Komiic domains.
-    private func normalizedURL(_ url: URL) -> URL? {
+    func normalizedURL(_ url: URL) -> URL? {
         guard let host = baseURL.host, host != "komiic.com", host.hasSuffix("komiic.cc"),
               let urlHost = url.host, ["img.komiic.com", "public.komiic.com", "download.komiic.com"].contains(urlHost),
               var parts = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return url }
@@ -493,9 +502,9 @@ private struct AccountResult: Decodable {
     let account: Account?
     struct Account: Decodable {
         let id: String
-        let nickname: String
-        let email: String
-        let dateCreated: String
+        let nickname: String?
+        let email: String?
+        let dateCreated: String?
         let profileImageUrl: URL?
         let profileText: String?
         let warningPreferences: [ContentWarningPreference]?
@@ -505,35 +514,25 @@ private struct AccountIdentityResult: Decodable {
     let account: Identity?
     struct Identity: Decodable { let id: String }
 }
-private struct ProfileStatsResult: Decodable {
-    let readingStats: ReadingStats
+private struct ReadingStatsResult: Decodable { let readingStats: AccountReadingStats }
+private struct MessageStatsResult: Decodable { let messageStats: AccountMessageStats }
+private struct ImageLimitResult: Decodable {
+    let account: AccountIdentityResult.Identity?
     let getImageLimit: ImageLimit
-    let messageStats: MessageStats
-    struct ReadingStats: Decodable {
-        let comicsRead: Int
-        let chaptersRead: Int
-        let favoriteCount: Int
-        let bookmarkCount: Int
-        let folderCount: Int
-        let followingFolderCount: Int
-        let topCategories: [ProfileCategoryCount]
-    }
     struct ImageLimit: Decodable {
         let limit: Int
         let usage: Int
-        let resetInSeconds: String
+        let resetInSeconds: TimeInterval
         enum CodingKeys: String, CodingKey { case limit, usage, resetInSeconds }
         init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
             limit = try c.decode(Int.self, forKey: .limit)
             usage = try c.decode(Int.self, forKey: .usage)
-            if let value = try? c.decode(String.self, forKey: .resetInSeconds) { resetInSeconds = value }
-            else { resetInSeconds = String(try c.decode(Int.self, forKey: .resetInSeconds)) }
+            let seconds = (try? c.decode(Double.self, forKey: .resetInSeconds))
+                ?? (try? c.decode(String.self, forKey: .resetInSeconds)).flatMap(Double.init)
+            guard let seconds, seconds.isFinite else { throw KomiicError.invalidResponse }
+            resetInSeconds = max(0, seconds)
         }
-    }
-    struct MessageStats: Decodable {
-        let totalMessages: Int
-        let totalUpvotes: Int
     }
 }
 private struct WarningPreferencesResult: Decodable {

@@ -1,8 +1,16 @@
-# Komiic for iOS 0.9.0
+# Komiic for iOS 0.1.0
 
-基于 v3.0 升级的原生 SwiftUI 漫画客户端，当前版本 **0.9.0（build 9）**，支持 iPhone / iPad、iOS 17 及以上。使用 Apple 系统框架，无第三方运行时依赖。iOS 26 使用系统 Liquid Glass 导航及阅读控制条，旧系统保留兼容外观。
+基于 v3.0 升级的原生 SwiftUI 漫画客户端，当前版本 **0.1.0（build 10）**，支持 iPhone / iPad、iOS 17 及以上。使用 Apple 系统框架，无第三方运行时依赖。iOS 26 使用系统 Liquid Glass 导航及阅读控制条，旧系统保留兼容外观。
 
 ## 本次更新
+
+- 登录后在账号页显示官网头像、昵称、ID、邮箱和加入日期。阅读统计由各自的接口提供，单项统计加载失败时仍可查看资料。
+- 图片读取卡片显示官网已用页数、总额度、进度条及重置时间。打开账号页和下拉刷新时查询最新额度。
+- 点「我的留言」查看个人留言、获赞和原作品。在「最常阅读分类」查看官网阅读次数排名。
+- 「继续阅读」下方新增评论区，打开右侧抽屉查看评论和引用。登录后可留言、回复和投票。
+- 「加入书柜」列表在已加入的书柜行右侧显示勾选。加入后可继续选择其他书柜，点「完成」关闭。
+
+## 0.9.0 已有功能
 
 - 竖屏采用整话长条，同一话内所有图片随双指手势同步缩放；横屏自动切换左右双页，两页作为一个整体缩放。最小原比例，最高 5 倍。
 - 放大长条后仍可上下连续阅读，横屏放大后拖动查看当前双页；原图只在可见区域及附近解码，保留整话预加载和离线阅读。
@@ -73,6 +81,8 @@
 
 ## 验证与构建
 
+0.1.0 的工程结构和 Swift 语法检查可在 Windows 执行。Xcode 编译、XCTest 和登录后交互仍需 iOS 环境验证。
+
 0.9.0 的 Windows 工程结构与 Swift 语法检查通过（48 个 Swift 文件）。Xcode 26.6 / iOS SDK 26.5 的 iPhone、iPad 模拟器各 118 项 XCTest 全部通过，共 236 项、零失败；真实设备 Release 编译及 IPA 校验通过。覆盖整话/双页缩放、缓存重启恢复、账号切换、会话续期及退出登录保护，完整证据见[验证记录](docs/Verification.md)。
 
 [下载 0.9.0 IPA（仅安装包，约 1.4 MB）](https://github.com/hahahalucas/Komiic/actions/runs/45673560888/artifacts/15051453189)，解压后使用 `Komiic-iPhone-iPad-unsigned.ipa`，安装前需自签。[完整测试、截图及构建日志](https://github.com/hahahalucas/Komiic/actions/runs/45673560888/artifacts/15051573065)另行提供。0.8.0 历史记录保留在[构建说明](docs/IPA.md)。
@@ -93,6 +103,6 @@ Xcode 编译、XCTest、模拟器界面及真机验证需在 Mac 完成；本地
 bash scripts/build_ipa.sh --unsigned
 ```
 
-无签名 IPA 安装前需要使用自己的证书签名。历史 3.0、2.0 和 0.1.0 构建记录不代表本次版本。
+无签名 IPA 安装前需要使用自己的证书签名。本次 0.1.0 使用 build 10。
 
 公开源码：[hahahalucas/Komiic](https://github.com/hahahalucas/Komiic)。本项目采用 [MIT 许可证](LICENSE)，为独立客户端，与 Komiic 官方无隶属关系。所用第一方内部接口可能随官网更新而改变。

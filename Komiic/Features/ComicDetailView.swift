@@ -12,6 +12,7 @@ struct ComicDetailView: View {
     @State private var error: String?
     @State private var launch: ReaderLaunch?
     @State private var addingToShelf = false
+    @State private var showingComments = false
     @State private var ascending = true
     @State private var scheduling: Set<String> = []
     @State private var retry = 0
@@ -71,6 +72,7 @@ struct ComicDetailView: View {
                     Button { addingToShelf = true } label: { Image(systemName: "books.vertical").padding(.vertical, 7) }
                         .komiicActionStyle().accessibilityLabel("加入书柜")
                 }
+                commentsButton
                 if !displayedComic.categories.isEmpty {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack {
@@ -162,6 +164,29 @@ struct ComicDetailView: View {
             ReaderView(comic: item.comic, chapter: item.chapter, initialPage: item.page, chapterDirectory: chapters)
         }
         .sheet(isPresented: $addingToShelf) { AddToShelfView(comic: displayedComic).presentationDetents([.medium, .large]) }
+        .fullScreenCover(isPresented: $showingComments) {
+            ComicCommentsDrawer(comicID: comic.id, mode: settings.contentMode) { setCommentsPresented(false) }
+        }
+    }
+
+    private func setCommentsPresented(_ presented: Bool) {
+        var transaction = Transaction(animation: nil)
+        transaction.disablesAnimations = true
+        withTransaction(transaction) { showingComments = presented }
+    }
+
+    private var commentsButton: some View {
+        Button { setCommentsPresented(true) } label: {
+            HStack {
+                Label("评论区", systemImage: "bubble.left.and.bubble.right")
+                    .font(.subheadline.weight(.semibold)).foregroundStyle(KomiicTheme.accent)
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 14).frame(minHeight: 48)
+            .contentShape(Rectangle()).komiicCard()
+        }
+        .buttonStyle(.plain)
     }
 
     @MainActor private func load() async {
@@ -284,22 +309,56 @@ private struct AddToShelfView: View {
     var body: some View {
         NavigationStack {
             List {
-                Section("选择书柜") {
-                    ForEach(library.shelves) { shelf in
-                        Button { library.addToShelf(comic, shelfID: shelf.id); dismiss() } label: {
-                            Label(shelf.name, systemImage: "books.vertical")
+                Section {
+                    if library.shelves.isEmpty {
+                        if library.syncingOfficial {
+                            ProgressView("正在读取书柜…")
+                        } else {
+                            Text("暂无书柜").foregroundStyle(.secondary)
                         }
                     }
+                    ForEach(library.shelves) { shelf in shelfRow(shelf) }
+                } header: {
+                    Text("选择书柜")
+                } footer: {
+                    if let error = library.officialSyncError { Text(error) }
                 }
                 Section("新建书柜") {
                     TextField("书柜名称", text: $name)
                     Button("创建并加入") {
-                        if let shelf = library.createShelf(name: name) { library.addToShelf(comic, shelfID: shelf.id); dismiss() }
+                        if let shelf = library.createShelf(name: name) {
+                            library.addToShelf(comic, shelfID: shelf.id)
+                            name = ""
+                        }
                     }.disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
             .navigationTitle("加入书柜").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("完成") { dismiss() } } }
         }
+        .task { await library.refreshOfficialLibrary(force: false) }
+    }
+
+    @ViewBuilder private func shelfRow(_ shelf: Bookshelf) -> some View {
+        if shelf.comics.contains(where: { $0.id == comic.id }) {
+            shelfLabel(shelf.name, added: true)
+                .accessibilityElement(children: .combine).accessibilityValue("已加入")
+        } else {
+            Button { library.addToShelf(comic, shelfID: shelf.id) } label: {
+                shelfLabel(shelf.name, added: false)
+            }
+            .buttonStyle(.plain).accessibilityValue("未加入")
+        }
+    }
+
+    private func shelfLabel(_ name: String, added: Bool) -> some View {
+        HStack {
+            Label(name, systemImage: "books.vertical")
+            Spacer(minLength: 8)
+            if added {
+                Image(systemName: "checkmark.circle.fill").font(.body.weight(.semibold)).accessibilityHidden(true)
+            }
+        }
+        .foregroundStyle(KomiicTheme.accent).contentShape(Rectangle())
     }
 }

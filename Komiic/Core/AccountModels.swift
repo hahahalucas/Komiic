@@ -31,23 +31,82 @@ struct ProfileCategoryCount: Codable, Identifiable, Sendable {
 struct KomiicAccountProfile: Codable, Sendable {
     var id: String
     var username: String
-    var email: String
-    var dateCreated: String
+    var email: String?
+    var dateCreated: String?
     var profileImageURL: URL?
     var profileText: String?
-    var readComicCount: Int
-    var readChapterCount: Int
-    var imageReadCount: Int
-    var imageReadLimit: Int
-    var resetAt: Date
-    var commentCount: Int
-    var commentLikes: Int
-    var favoriteCount: Int
-    var bookmarkCount: Int
-    var folderCount: Int
-    var followedFolderCount: Int
-    var topCategories: [ProfileCategoryCount]
     var warningPreferences: [ContentWarningPreference]
+    var readingStats: AccountReadingStats? = nil
+    var imageQuota: ImageReadingQuota? = nil
+    var messageStats: AccountMessageStats? = nil
+
+    private enum CodingKeys: String, CodingKey {
+        case id, username, email, dateCreated, profileImageURL, profileText, warningPreferences
+        case readingStats, imageQuota, messageStats
+    }
+}
+
+struct AccountReadingStats: Codable, Sendable {
+    let comicsRead: Int
+    let chaptersRead: Int
+    let favoriteCount: Int
+    let bookmarkCount: Int
+    let folderCount: Int
+    let followingFolderCount: Int
+    let topCategories: [ProfileCategoryCount]
+}
+
+struct ImageReadingQuota: Codable, Sendable {
+    let usage: Int
+    let limit: Int
+    let resetAt: Date
+
+    var fractionUsed: Double { limit > 0 ? min(1, max(0, Double(usage) / Double(limit))) : 0 }
+}
+
+struct AccountMessageStats: Codable, Sendable {
+    let totalMessages: Int
+    let totalUpvotes: Int
+}
+
+extension KomiicAccountProfile {
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(String.self, forKey: .id)
+        username = try values.decode(String.self, forKey: .username)
+        email = try values.decodeIfPresent(String.self, forKey: .email)
+        dateCreated = try values.decodeIfPresent(String.self, forKey: .dateCreated)
+        profileImageURL = try values.decodeIfPresent(URL.self, forKey: .profileImageURL)
+        profileText = try values.decodeIfPresent(String.self, forKey: .profileText)
+        warningPreferences = try values.decode([ContentWarningPreference].self, forKey: .warningPreferences)
+        readingStats = try values.decodeIfPresent(AccountReadingStats.self, forKey: .readingStats)
+        imageQuota = try values.decodeIfPresent(ImageReadingQuota.self, forKey: .imageQuota)
+        messageStats = try values.decodeIfPresent(AccountMessageStats.self, forKey: .messageStats)
+
+        // 0.9.0 stored statistics alongside the identity fields.
+        if let legacy = try? LegacyStatistics(from: decoder) {
+            readingStats = AccountReadingStats(comicsRead: legacy.readComicCount, chaptersRead: legacy.readChapterCount,
+                favoriteCount: legacy.favoriteCount, bookmarkCount: legacy.bookmarkCount, folderCount: legacy.folderCount,
+                followingFolderCount: legacy.followedFolderCount, topCategories: legacy.topCategories)
+            imageQuota = ImageReadingQuota(usage: legacy.imageReadCount, limit: legacy.imageReadLimit, resetAt: legacy.resetAt)
+            messageStats = AccountMessageStats(totalMessages: legacy.commentCount, totalUpvotes: legacy.commentLikes)
+        }
+    }
+
+    private struct LegacyStatistics: Decodable {
+        let readComicCount: Int
+        let readChapterCount: Int
+        let imageReadCount: Int
+        let imageReadLimit: Int
+        let resetAt: Date
+        let commentCount: Int
+        let commentLikes: Int
+        let favoriteCount: Int
+        let bookmarkCount: Int
+        let folderCount: Int
+        let followedFolderCount: Int
+        let topCategories: [ProfileCategoryCount]
+    }
 }
 
 struct OfficialChapterProgress: Decodable, Sendable {

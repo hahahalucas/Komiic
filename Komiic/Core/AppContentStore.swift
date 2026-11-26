@@ -64,9 +64,11 @@ final class AccountProfileModel: ObservableObject {
     @Published private(set) var connected = false
     @Published private(set) var loading = false
     @Published private(set) var error: String?
+    @Published private(set) var quotaRefreshFailed = false
     private(set) var hasLoaded = false
     private let mode: ComicContentMode
     private let fetchProfile: () async throws -> KomiicAccountProfile?
+    private let statisticsAPI: KomiicAPI?
     private var request: Task<Void, Never>?
     private var generation = UUID()
     private let snapshots: AppSnapshotStore?
@@ -79,49 +81,109 @@ final class AccountProfileModel: ObservableObject {
 
     init(mode: ComicContentMode, snapshots: AppSnapshotStore?,
          sessionScope: @escaping () -> String?,
+         api: KomiicAPI? = nil,
          fetchProfile: (() async throws -> KomiicAccountProfile?)? = nil) {
+        let api = api ?? KomiicAPI(mode: mode)
         self.mode = mode
         self.snapshots = snapshots
         self.sessionScope = sessionScope
         cachedScope = sessionScope()
-        self.fetchProfile = fetchProfile ?? { try await KomiicAPI(mode: mode).accountProfile() }
+        self.fetchProfile = fetchProfile ?? { try await api.accountProfile() }
+        statisticsAPI = fetchProfile == nil ? api : nil
+        connected = cachedScope != nil
         restore()
     }
 
-    func load(force: Bool = false) async {
+    func load(force: Bool = false, refreshQuota: Bool = false) async {
         synchronizeSessionScope()
-        if let request { await request.value; return }
-        guard force || !hasLoaded else { return }
+        if let request {
+            let updatingQuota = !loading
+            await request.value
+            if force, updatingQuota, !Task.isCancelled { await load(force: true) }
+            return
+        }
+        let needsProfile = force || !hasLoaded
+        guard needsProfile || (refreshQuota && profile != nil && statisticsAPI != nil) else { return }
         let id = generation
-        loading = true
-        error = nil
+        if needsProfile {
+            loading = true
+            error = nil
+        }
         let task = Task {
-            defer { if generation == id { loading = false; hasLoaded = true } }
-            do {
-                let result = try await fetchProfile()
-                try Task.checkCancellation()
-                guard generation == id, sessionScope() == cachedScope else { return }
-                profile = result
-                connected = result != nil
-                if let key = cacheKey {
-                    if let result { snapshots?.save(result, key: key) }
-                    else { snapshots?.remove(key: key) }
-                }
-            } catch is CancellationError {
-            } catch let problem as URLError where problem.code == .cancelled {
-            } catch KomiicError.authenticationRequired {
-                guard generation == id else { return }
-                profile = nil; connected = false
-                if let key = cacheKey { snapshots?.remove(key: key) }
-            } catch {
-                guard generation == id else { return }
-                // A failed refresh leaves the already displayed profile in place.
-                self.error = error.localizedDescription
+            if needsProfile {
+                await loadProfile(generation: id)
+            } else if let statisticsAPI {
+                await loadImageQuota(using: statisticsAPI, generation: id)
+            }
+            if generation == id {
+                request = nil
+                if needsProfile { hasLoaded = true }
+                loading = false
             }
         }
         request = task
         await task.value
-        if generation == id { request = nil }
+    }
+
+    private func loadProfile(generation id: UUID) async {
+        do {
+            let result = try await fetchProfile()
+            guard isCurrent(id) else { return }
+            guard var result else {
+                profile = nil
+                connected = false
+                if let key = cacheKey { snapshots?.remove(key: key) }
+                return
+            }
+            if let profile, profile.id == result.id {
+                result.readingStats = result.readingStats ?? profile.readingStats
+                result.imageQuota = result.imageQuota ?? profile.imageQuota
+                result.messageStats = result.messageStats ?? profile.messageStats
+            }
+            profile = result
+            connected = true
+            saveProfile()
+
+            if let statisticsAPI {
+                async let reading = try? statisticsAPI.accountReadingStats()
+                async let messages = try? statisticsAPI.accountMessageStats()
+                await loadImageQuota(using: statisticsAPI, generation: id)
+                let (readingStats, messageStats) = await (reading, messages)
+                guard isCurrent(id) else { return }
+                if let readingStats { profile?.readingStats = readingStats }
+                if let messageStats { profile?.messageStats = messageStats }
+                saveProfile()
+            }
+        } catch is CancellationError {
+        } catch let problem as URLError where problem.code == .cancelled {
+        } catch KomiicError.authenticationRequired {
+            guard isCurrent(id) else { return }
+            profile = nil
+            connected = false
+            if let key = cacheKey { snapshots?.remove(key: key) }
+        } catch {
+            guard isCurrent(id) else { return }
+            self.error = error.localizedDescription
+        }
+    }
+
+    private func loadImageQuota(using api: KomiicAPI, generation id: UUID) async {
+        guard let accountID = profile?.id else { return }
+        let quota = try? await api.imageReadingQuota(accountID: accountID)
+        guard isCurrent(id) else { return }
+        quotaRefreshFailed = quota == nil
+        if let quota {
+            profile?.imageQuota = quota
+            saveProfile()
+        }
+    }
+
+    private func isCurrent(_ id: UUID) -> Bool {
+        !Task.isCancelled && generation == id && sessionScope() == cachedScope
+    }
+
+    private func saveProfile() {
+        if let profile, let key = cacheKey { snapshots?.save(profile, key: key) }
     }
 
     func reset() {
@@ -133,6 +195,7 @@ final class AccountProfileModel: ObservableObject {
         connected = false
         loading = false
         error = nil
+        quotaRefreshFailed = false
         hasLoaded = false
     }
 
@@ -140,7 +203,8 @@ final class AccountProfileModel: ObservableObject {
         let scope = sessionScope()
         guard scope != cachedScope else { return }
         generation = UUID(); request?.cancel(); request = nil
-        profile = nil; connected = false; loading = false; error = nil; hasLoaded = false
+        profile = nil; connected = scope != nil; loading = false; error = nil; hasLoaded = false
+        quotaRefreshFailed = false
         cachedScope = scope
         restore()
     }

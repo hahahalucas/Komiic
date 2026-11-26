@@ -106,6 +106,16 @@ final class ContentPersistenceTests: XCTestCase {
         XCTAssertNil(AccountProfileModel(mode: .general, snapshots: cache, sessionScope: { nil }).profile)
     }
 
+    func testLegacyAccountSnapshotRestoresOfficialStatistics() throws {
+        let data = Data(#"{"id":"A","username":"test","email":"test@example.invalid","dateCreated":"2026-01-01","readComicCount":2,"readChapterCount":3,"imageReadCount":4,"imageReadLimit":100,"resetAt":123,"commentCount":5,"commentLikes":6,"favoriteCount":1,"bookmarkCount":0,"folderCount":0,"followedFolderCount":0,"topCategories":[{"id":"1","name":"冒险","count":2}],"warningPreferences":[]}"#.utf8)
+        let profile = try JSONDecoder().decode(KomiicAccountProfile.self, from: data)
+        XCTAssertEqual(profile.readingStats?.topCategories.first?.count, 2)
+        XCTAssertEqual(profile.imageQuota?.limit, 100)
+        XCTAssertEqual(profile.messageStats?.totalUpvotes, 6)
+        let updated = try JSONDecoder().decode(KomiicAccountProfile.self, from: JSONEncoder().encode(profile))
+        XCTAssertEqual(updated.imageQuota?.resetAt, Date(timeIntervalSinceReferenceDate: 123))
+    }
+
     func testDelayedResponseFromPreviousAccountCannotRestoreIt() async throws {
         let cache = AppSnapshotStore(directory: try temporaryDirectory())
         let gate = ProfileGate()
@@ -142,10 +152,8 @@ final class ContentPersistenceTests: XCTestCase {
 
     private func profile(_ id: String) -> KomiicAccountProfile {
         KomiicAccountProfile(id: id, username: id, email: "test@example.invalid", dateCreated: "2026-01-01",
-            profileImageURL: nil, profileText: nil, readComicCount: 2, readChapterCount: 3,
-            imageReadCount: 4, imageReadLimit: 100, resetAt: Date(), commentCount: 0, commentLikes: 0,
-            favoriteCount: 1, bookmarkCount: 0, folderCount: 0, followedFolderCount: 0,
-            topCategories: [], warningPreferences: [])
+            profileImageURL: nil, profileText: nil, warningPreferences: [],
+            imageQuota: ImageReadingQuota(usage: 4, limit: 100, resetAt: Date()))
     }
     private func temporaryDirectory() throws -> URL {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("KomiicContentTests-\(UUID().uuidString)")

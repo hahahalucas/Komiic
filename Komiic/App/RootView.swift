@@ -131,7 +131,7 @@ struct RootView: View {
     }
 
     private func screen(_ tab: AppTab) -> some View {
-        TabRootScreen(tab: tab, librarySection: $librarySection,
+        TabRootScreen(tab: tab, isSelected: selected == tab, librarySection: $librarySection,
                       path: Binding(get: { paths[tab] ?? NavigationPath() }, set: { paths[tab] = $0 }),
                       openSearchResult: { comic in
                           paths[tab] = NavigationPath()
@@ -149,6 +149,7 @@ struct RootView: View {
 
 private struct TabRootScreen: View {
     let tab: AppTab
+    let isSelected: Bool
     @Binding var librarySection: LibrarySection
     @Binding var path: NavigationPath
     let openSearchResult: (Comic) -> Void
@@ -212,7 +213,8 @@ private struct TabRootScreen: View {
         switch tab {
         case .home: CatalogView()
         case .favorites: FavoritesView()
-        case .account: AccountView(onOpenFavorites: openFavorites, onOpenBookmarks: openBookmarks, onOpenShelves: openShelves)
+        case .account: AccountView(onOpenFavorites: openFavorites, onOpenBookmarks: openBookmarks,
+                                  onOpenShelves: openShelves, isVisible: isSelected && path.isEmpty)
         case .library:
             VStack(spacing: 0) {
                 Picker("资料库", selection: $librarySection) {
