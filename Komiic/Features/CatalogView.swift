@@ -176,6 +176,7 @@ struct CatalogView: View {
                 .scrollTargetLayout()
             }
             .scrollIndicators(.hidden, axes: .horizontal)
+            .contentMargins(.bottom, 0, for: .scrollContent)
             .scrollTargetBehavior(.viewAligned(limitBehavior: .alwaysByOne))
             .scrollPosition(id: $visiblePage, anchor: .center)
             .onScrollPhaseChange { _, phase in
