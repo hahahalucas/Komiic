@@ -216,7 +216,7 @@ struct ComicDetailView: View {
     }
     private var contentRating: some View {
         VStack(alignment: .leading, spacing: 10) {
-            SectionHeading(title: "色情程度")
+            SectionHeading(title: "色气指数")
             if let level = displayedComic.sexyLevel {
                 HStack(spacing: 8) {
                     ForEach(0..<5, id: \.self) { index in
@@ -225,7 +225,7 @@ struct ComicDetailView: View {
                     }
                     Text(level == 0 ? "无" : "\(level) / 5").font(.caption).foregroundStyle(.secondary)
                 }.accessibilityElement(children: .ignore)
-                    .accessibilityLabel(level == 0 ? "色情程度：无" : "色情程度：\(level) 级，共 5 级")
+                    .accessibilityLabel(level == 0 ? "色气指数：无" : "色气指数：\(level) 级，共 5 级")
                 if let reason = displayedComic.sexyLevelReason, !reason.isEmpty {
                     Text(reason).font(.subheadline).foregroundStyle(.secondary).lineSpacing(6)
                 }

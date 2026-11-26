@@ -117,9 +117,13 @@ enum CatalogPage: String, CaseIterable, Identifiable {
 }
 
 struct CatalogView: View {
+    private static let filterButtonSize: CGFloat = 48
+    private static let filterButtonInset: CGFloat = 14
+
     @Binding var page: CatalogPage
     let active: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.komiicTheme) private var theme
     @EnvironmentObject private var settings: ReaderSettings
     @EnvironmentObject private var content: AppContentStore
     @State private var filter: ContentFilter = .all
@@ -156,10 +160,14 @@ struct CatalogView: View {
                                 .id(content.revision)
                         }
                     }
+                    .contentMargins(.bottom, Self.filterButtonSize + Self.filterButtonInset, for: .scrollContent)
                     .tag(item)
                 }
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
+        }
+        .overlay(alignment: .bottomTrailing) {
+            filterButton.padding([.trailing, .bottom], Self.filterButtonInset)
         }
         .sheet(isPresented: $showFilter) {
             FilterSheet(selection: $filter)
@@ -182,16 +190,23 @@ struct CatalogView: View {
                     .lineLimit(1).minimumScaleFactor(0.8)
             }
             Spacer(minLength: 0)
-            Button { showFilter = true } label: {
-                Image(systemName: filter == .all ? "line.3.horizontal.decrease" : "line.3.horizontal.decrease.circle.fill")
-                    .font(.system(size: 19)).padding(9)
-            }
-            .komiicActionStyle()
-            .accessibilityLabel("筛选选项")
-            .accessibilityValue(filter.title)
         }
         .frame(minHeight: 44)
         .padding(.horizontal, 14).padding(.vertical, 6)
+    }
+
+    private var filterButton: some View {
+        Button { showFilter = true } label: {
+            Image(systemName: filter == .all ? "line.3.horizontal.decrease" : "line.3.horizontal.decrease.circle.fill")
+                .font(.system(size: 19, weight: .medium))
+                .foregroundStyle(filter == .all ? Color.primary : theme.accent)
+                .frame(width: Self.filterButtonSize, height: Self.filterButtonSize)
+                .contentShape(RoundedRectangle(cornerRadius: 14))
+        }
+        .buttonStyle(.plain)
+        .komiicGlass(cornerRadius: 14, interactive: true)
+        .accessibilityLabel("筛选选项")
+        .accessibilityValue(filter.title)
     }
 
     private func select(_ destination: CatalogPage) {
@@ -255,7 +270,7 @@ private struct FilterSheet: View {
         NavigationStack {
             Form {
                 Section("内容分级") {
-                    Picker("色情程度", selection: $draft) {
+                    Picker("色气指数", selection: $draft) {
                         ForEach(ContentFilter.allCases) { filter in
                             Text(filter.title).tag(filter)
                         }

@@ -28,6 +28,7 @@ on:
       - codex/komiic-0.1.0
       - codex/komiic-1.0.1
       - codex/komiic-1.0.2-rebuild
+      - codex/komiic-1.0.3
 
 permissions:
   contents: read
@@ -38,7 +39,7 @@ concurrency:
 
 jobs:
   api-contract:
-    if: github.ref_name != 'codex/komiic-1.0.2-rebuild'
+    if: github.ref_name != 'codex/komiic-1.0.2-rebuild' && github.ref_name != 'codex/komiic-1.0.3'
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
@@ -62,7 +63,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        mode: ${{ fromJSON(github.ref_name == 'codex/komiic-1.0.2-rebuild' && '["ipa"]' || '["ipa", "full"]') }}
+        mode: ${{ fromJSON((github.ref_name == 'codex/komiic-1.0.2-rebuild' || github.ref_name == 'codex/komiic-1.0.3') && '["ipa"]' || '["ipa", "full"]') }}
     env:
       KOMIIC_BUNDLE_ID: ${{ inputs.bundle_id || 'com.example.Komiic' }}
     steps:

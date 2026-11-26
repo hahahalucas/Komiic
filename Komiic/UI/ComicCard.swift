@@ -55,7 +55,7 @@ struct ComicCard: View {
                 }
                 .font(.system(size: 10)).foregroundStyle(.secondary)
                 if readingProgress != nil {
-                    Text(comic.sexyLevel.map { $0 == 0 ? "色情程度 · 无" : "色情程度 · \($0)/5" } ?? "暂无分级")
+                    Text(comic.sexyLevel.map { $0 == 0 ? "色气指数 · 无" : "色气指数 · \($0)/5" } ?? "暂无分级")
                         .font(.caption2).foregroundStyle(.secondary)
                         .lineLimit(1).minimumScaleFactor(0.75)
                 }

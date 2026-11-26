@@ -192,8 +192,8 @@ private struct TabRootScreen: View {
     @Environment(\.komiicTheme) private var theme
     @State private var showingPalette = false
 
-    var body: some View {
-        NavigationStack(path: $path) {
+    @ViewBuilder var body: some View {
+        let stack = NavigationStack(path: $path) {
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(theme.canvas)
@@ -239,6 +239,12 @@ private struct TabRootScreen: View {
         .sheet(isPresented: $showingPalette) { ThemePaletteView() }
         .environment(\.openAuthor) { path.append($0) }
         .environment(\.openComicDirectory) { path.append($0) }
+
+        if #available(iOS 26.0, *) {
+            stack.scrollEdgeEffectHidden(true, for: .bottom)
+        } else {
+            stack.toolbarBackground(.hidden, for: .tabBar)
+        }
     }
 
     @ViewBuilder private var content: some View {
