@@ -192,9 +192,33 @@ private struct TabRootScreen: View {
     @Environment(\.komiicTheme) private var theme
     @State private var showingPalette = false
 
-    @ViewBuilder var body: some View {
-        let stack = NavigationStack(path: $path) {
-            content
+    var body: some View {
+        Group {
+            if #available(iOS 26.0, *) {
+                GeometryReader { viewport in
+                    GeometryReader { expanded in
+                        // Keep the scroll viewport behind the tab bar and inset only its contents.
+                        let bottomInset = max(0, expanded.size.height - viewport.size.height)
+                        navigation(bottomInset: bottomInset)
+                            .contentMargins(.bottom, bottomInset, for: .scrollContent)
+                            .contentMargins(.bottom, bottomInset, for: .scrollIndicators)
+                            .scrollEdgeEffectHidden(true, for: .bottom)
+                    }
+                    .ignoresSafeArea(.container, edges: .bottom)
+                }
+            } else {
+                navigation(bottomInset: 0)
+                    .toolbarBackground(.hidden, for: .tabBar)
+            }
+        }
+        .sheet(isPresented: $showingPalette) { ThemePaletteView() }
+        .environment(\.openAuthor) { path.append($0) }
+        .environment(\.openComicDirectory) { path.append($0) }
+    }
+
+    private func navigation(bottomInset: CGFloat) -> some View {
+        NavigationStack(path: $path) {
+            content(bottomInset: bottomInset)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(theme.canvas)
                 .modifier(TabSwipeModifier(targets: swipeTargets, select: selectBySwipe))
@@ -221,7 +245,7 @@ private struct TabRootScreen: View {
                         .accessibilityLabel("更多功能")
                     }
                 }
-                .navigationDestination(for: Comic.self) { ComicDetailView(comic: $0) }
+                .navigationDestination(for: Comic.self) { ComicDetailView(comic: $0, bottomInset: bottomInset) }
                 .navigationDestination(for: BookshelfRoute.self) { ShelfDetailView(shelfID: $0.id) }
                 .navigationDestination(for: ComicAuthor.self) { AuthorView(author: $0) }
                 .navigationDestination(for: SearchRoute.self) { route in
@@ -236,20 +260,11 @@ private struct TabRootScreen: View {
                     }
                 }
         }
-        .sheet(isPresented: $showingPalette) { ThemePaletteView() }
-        .environment(\.openAuthor) { path.append($0) }
-        .environment(\.openComicDirectory) { path.append($0) }
-
-        if #available(iOS 26.0, *) {
-            stack.scrollEdgeEffectHidden(true, for: .bottom)
-        } else {
-            stack.toolbarBackground(.hidden, for: .tabBar)
-        }
     }
 
-    @ViewBuilder private var content: some View {
+    @ViewBuilder private func content(bottomInset: CGFloat) -> some View {
         switch tab {
-        case .home: CatalogView(page: $catalogPage, active: isSelected && path.isEmpty)
+        case .home: CatalogView(page: $catalogPage, active: isSelected && path.isEmpty, bottomInset: bottomInset)
         case .favorites: FavoritesView()
         case .account: AccountView(onOpenFavorites: openFavorites, onOpenBookmarks: openBookmarks,
                                   onOpenShelves: openShelves, isVisible: isSelected && path.isEmpty)

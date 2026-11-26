@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ComicDetailView: View {
     let comic: Comic
+    let bottomInset: CGFloat
     @EnvironmentObject private var library: LibraryStore
     @EnvironmentObject private var downloads: DownloadStore
     @EnvironmentObject private var settings: ReaderSettings
@@ -157,7 +158,7 @@ struct ComicDetailView: View {
                     }.padding(.horizontal, 16).padding(.vertical, 12)
                         .foregroundStyle(theme.accent)
                         .komiicGlass(cornerRadius: 18, interactive: true)
-                }.buttonStyle(.plain).padding(.trailing, 20).padding(.bottom, 10)
+                }.buttonStyle(.plain).padding(.trailing, 20).padding(.bottom, bottomInset + 10)
                     .accessibilityLabel("继续阅读，\(progress.chapter.displayTitle)，第 \(progress.page + 1) 页")
             }
         }

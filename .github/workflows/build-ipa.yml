@@ -29,6 +29,7 @@ on:
       - codex/komiic-1.0.1
       - codex/komiic-1.0.2-rebuild
       - codex/komiic-1.0.3
+      - codex/komiic-1.0.4
 
 permissions:
   contents: read
@@ -39,7 +40,7 @@ concurrency:
 
 jobs:
   api-contract:
-    if: github.ref_name != 'codex/komiic-1.0.2-rebuild' && github.ref_name != 'codex/komiic-1.0.3'
+    if: ${{ !contains(fromJSON('["codex/komiic-1.0.2-rebuild", "codex/komiic-1.0.3", "codex/komiic-1.0.4"]'), github.ref_name) }}
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
@@ -63,7 +64,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        mode: ${{ fromJSON((github.ref_name == 'codex/komiic-1.0.2-rebuild' || github.ref_name == 'codex/komiic-1.0.3') && '["ipa"]' || '["ipa", "full"]') }}
+        mode: ${{ fromJSON(contains(fromJSON('["codex/komiic-1.0.2-rebuild", "codex/komiic-1.0.3", "codex/komiic-1.0.4"]'), github.ref_name) && '["ipa"]' || '["ipa", "full"]') }}
     env:
       KOMIIC_BUNDLE_ID: ${{ inputs.bundle_id || 'com.example.Komiic' }}
     steps:
@@ -126,6 +127,19 @@ jobs:
           if-no-files-found: error
           retention-days: 7
           compression-level: 0
+
+      - name: Capture the floating tab bar on iPhone and iPad
+        if: github.ref_name == 'codex/komiic-1.0.4'
+        run: bash scripts/capture_catalog_layout.sh "$RUNNER_TEMP/komiic-layout"
+
+      - name: Upload simulator screenshots
+        if: github.ref_name == 'codex/komiic-1.0.4'
+        uses: actions/upload-artifact@v7
+        with:
+          name: Komiic-layout-${{ github.run_number }}
+          path: ${{ runner.temp }}/komiic-layout/screenshots/*.png
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Archive build source
         if: matrix.mode == 'full'

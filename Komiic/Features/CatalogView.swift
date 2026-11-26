@@ -122,6 +122,7 @@ struct CatalogView: View {
 
     @Binding var page: CatalogPage
     let active: Bool
+    let bottomInset: CGFloat
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.komiicTheme) private var theme
     @EnvironmentObject private var settings: ReaderSettings
@@ -160,14 +161,15 @@ struct CatalogView: View {
                                 .id(content.revision)
                         }
                     }
-                    .contentMargins(.bottom, Self.filterButtonSize + Self.filterButtonInset, for: .scrollContent)
+                    .contentMargins(.bottom, bottomInset + Self.filterButtonSize + Self.filterButtonInset, for: .scrollContent)
                     .tag(item)
                 }
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
         }
         .overlay(alignment: .bottomTrailing) {
-            filterButton.padding([.trailing, .bottom], Self.filterButtonInset)
+            filterButton.padding(.trailing, Self.filterButtonInset)
+                .padding(.bottom, bottomInset + Self.filterButtonInset)
         }
         .sheet(isPresented: $showFilter) {
             FilterSheet(selection: $filter)
