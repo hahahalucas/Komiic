@@ -151,7 +151,8 @@ final class OfficialLibrarySyncTests: XCTestCase {
         let store = LibraryStore(directoryURL: try directory(), officialClient: await server.client())
         await store.refreshOfficialLibrary()
         let shelf = try XCTUnwrap(store.createShelf(name: "新柜"))
-        store.addToShelf(Comic(id: "comic", title: "漫画"), shelfID: shelf.id)
+        let comic = Comic(id: "comic", title: "漫画")
+        store.toggleShelfMembership(comic, shelfID: shelf.id)
         store.renameShelf(id: shelf.id, name: "改名")
         await store.retryPendingOfficialChanges()
         XCTAssertEqual(store.pendingOfficialChangeCount, 0)
@@ -159,6 +160,13 @@ final class OfficialLibrarySyncTests: XCTestCase {
         XCTAssertEqual(store.shelves.first?.id, shelf.id)
         XCTAssertEqual(store.shelves.first?.name, "改名")
         XCTAssertEqual(store.shelves.first?.comics.map(\.id), ["comic"])
+        store.toggleShelfMembership(comic, shelfID: shelf.id)
+        XCTAssertTrue(store.shelves.first?.comics.isEmpty == true)
+        await store.retryPendingOfficialChanges()
+        await store.refreshOfficialLibrary()
+        XCTAssertTrue(store.shelves.first?.comics.isEmpty == true)
+        let writes = await server.successfulWrites()
+        XCTAssertTrue(writes.contains("shelf:remote-新柜:comic:false"))
         store.deleteShelf(id: shelf.id)
         await store.retryPendingOfficialChanges()
         await store.refreshOfficialLibrary()
@@ -282,6 +290,39 @@ final class OfficialLibrarySyncTests: XCTestCase {
         store.selectMode(.general)
         XCTAssertTrue(store.history.isEmpty)
         XCTAssertTrue(store.readChapterIDs.isEmpty)
+    }
+
+    func testRecentReadingRemovalSurvivesCloudRefreshAndIsScopedToTheAccount() async throws {
+        let url = try directory()
+        let server = OfficialLibraryStub()
+        let client = await server.client()
+        let comic = Comic(id: "shared", title: "最近阅读")
+        let chapter = Chapter(id: "chapter")
+        await server.setHistory([OfficialReadingHistory(comic: comic, chapters: [
+            OfficialChapterProgress(chapterId: chapter.id, page: 5, updatedAt: nil)
+        ], lastDate: nil)], mode: .general)
+        let store = LibraryStore(directoryURL: url, officialClient: client, sessionScope: { _ in "same-session" })
+        await store.refreshOfficialLibrary()
+        store.removeFromRecentReading(comicID: comic.id)
+        XCTAssertTrue(store.recentReading.isEmpty)
+        XCTAssertEqual(store.pendingOfficialChangeCount, 0)
+        store.flushSnapshots()
+
+        let restored = LibraryStore(directoryURL: url, officialClient: client, sessionScope: { _ in "same-session" })
+        XCTAssertTrue(restored.recentReading.isEmpty)
+        XCTAssertEqual(restored.progress(for: comic.id)?.page, 5)
+        await restored.refreshOfficialLibrary()
+        XCTAssertTrue(restored.recentReading.isEmpty)
+
+        await server.setIdentity("other-account", mode: .general)
+        await restored.refreshOfficialLibrary()
+        XCTAssertTrue(restored.isInRecentReading(comicID: comic.id))
+        await server.setIdentity("general-account", mode: .general)
+        await restored.refreshOfficialLibrary()
+        XCTAssertFalse(restored.isInRecentReading(comicID: comic.id))
+        restored.recordProgress(comic: comic, chapter: chapter, page: 6, totalPages: 10)
+        XCTAssertEqual(restored.recentReading.first?.page, 6)
+        restored.resetOfficialSession()
     }
 
     func testFailedMutationSurvivesRestartAndNeverReplaysForAnotherAccount() async throws {

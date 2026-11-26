@@ -23,6 +23,20 @@ final class ReaderSettingsTests: XCTestCase {
         settings.readingDirection = .left
         XCTAssertEqual(ReaderSettings(defaults: defaults).readingDirection, .left)
     }
+
+    func testPaletteAndAppearanceAreIndependentAndSurviveRestart() throws {
+        let defaults = try defaults()
+        let settings = ReaderSettings(defaults: defaults)
+        XCTAssertEqual(settings.palette, .standard)
+        settings.palette = .violet
+        settings.theme = .dark
+        let restored = ReaderSettings(defaults: defaults)
+        XCTAssertEqual(restored.palette, .violet)
+        XCTAssertEqual(restored.theme, .dark)
+        restored.theme = .system
+        XCTAssertEqual(ReaderSettings(defaults: defaults).palette, .violet)
+    }
+
     private func defaults() throws -> UserDefaults {
         let suite = "KomiicReaderSettingsTests-\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
@@ -85,8 +99,10 @@ final class ReaderSettingsTests: XCTestCase {
         let defaults = try defaults()
         defaults.set(Data("broken preferences".utf8), forKey: "komiic.warningPreferences")
         defaults.set("unknown-mode", forKey: "komiic.contentMode")
+        defaults.set("unknown-palette", forKey: "komiic.palette")
         let settings = ReaderSettings(defaults: defaults)
         XCTAssertEqual(settings.contentMode, .general)
+        XCTAssertEqual(settings.palette, .standard)
         XCTAssertEqual(settings.warningAction(for: "血腥"), .show)
         XCTAssertTrue(settings.pendingWarningPreferences.isEmpty)
     }

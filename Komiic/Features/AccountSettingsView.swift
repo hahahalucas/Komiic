@@ -32,6 +32,7 @@ private struct AccountContentView: View {
     @EnvironmentObject private var library: LibraryStore
     @EnvironmentObject private var settings: ReaderSettings
     @EnvironmentObject private var content: AppContentStore
+    @Environment(\.komiicTheme) private var theme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.scenePhase) private var scenePhase
     @State private var website: WebDestination?
@@ -61,7 +62,6 @@ private struct AccountContentView: View {
                         MyCommentsSection(mode: settings.contentMode, refresh: messagesRefresh)
                             .id("\(profile.id):\(content.revision)")
                     }
-                    categorySummary(profile.readingStats?.topCategories)
                     collectionLinks(profile)
                     Button { openWebsite("/settings", title: "账号资料") } label: {
                         Label("在 Komiic 官网修改账号资料", systemImage: "arrow.up.right.square")
@@ -83,7 +83,7 @@ private struct AccountContentView: View {
             }
             .padding(18).frame(maxWidth: 760).frame(maxWidth: .infinity)
         }
-        .background(KomiicTheme.canvas)
+        .background(theme.canvas)
         .navigationTitle("账号").navigationBarTitleDisplayMode(.inline)
         .scrollBounceBehavior(.always, axes: .vertical)
         .refreshable {
@@ -139,7 +139,7 @@ private struct AccountContentView: View {
             Spacer(minLength: 0)
         }
         .padding(20).frame(maxWidth: .infinity, alignment: .leading)
-        .background(KomiicTheme.softBlue, in: RoundedRectangle(cornerRadius: 20))
+        .background(theme.accentWash, in: RoundedRectangle(cornerRadius: 20))
     }
 
     private func officialStats(_ profile: KomiicAccountProfile) -> some View {
@@ -153,12 +153,12 @@ private struct AccountContentView: View {
 
     private func quotaCard(_ quota: ImageReadingQuota?) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Image(systemName: "photo").font(.title3).foregroundStyle(KomiicTheme.accent)
+            Image(systemName: "photo").font(.title3).foregroundStyle(theme.accent)
             Text(quota.map { "\($0.usage)/\($0.limit)" } ?? "—")
                 .font(.title2.bold().monospacedDigit()).lineLimit(1).minimumScaleFactor(0.65)
             Text("图片读取").font(.subheadline).foregroundStyle(.secondary)
             if let quota {
-                ProgressView(value: quota.fractionUsed).tint(KomiicTheme.accent)
+                ProgressView(value: quota.fractionUsed).tint(theme.accent)
                     .accessibilityLabel("图片读取额度")
                     .accessibilityValue("已读取 \(quota.usage) 页，共 \(quota.limit) 页")
                 TimelineView(.periodic(from: .now, by: 60)) { context in
@@ -181,7 +181,7 @@ private struct AccountContentView: View {
         Button { withAnimation(.easeInOut(duration: 0.2)) { showingMessages.toggle() } } label: {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Image(systemName: "bubble.left.and.bubble.right").font(.title3).foregroundStyle(KomiicTheme.accent)
+                    Image(systemName: "bubble.left.and.bubble.right").font(.title3).foregroundStyle(theme.accent)
                     Spacer(minLength: 4)
                     Image(systemName: showingMessages ? "chevron.up" : "chevron.down")
                         .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
@@ -203,36 +203,11 @@ private struct AccountContentView: View {
 
     private func stat(_ title: String, value: Int?, symbol: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Image(systemName: symbol).font(.title3).foregroundStyle(KomiicTheme.accent)
+            Image(systemName: symbol).font(.title3).foregroundStyle(theme.accent)
             Text(value?.formatted() ?? "—").font(.title2.bold().monospacedDigit()).lineLimit(1).minimumScaleFactor(0.7)
             Text(title).font(.subheadline).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading).padding(16).komiicCard()
-    }
-
-    private func categorySummary(_ categories: [ProfileCategoryCount]?) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Label("最常阅读分类", systemImage: "square.grid.2x2").font(.headline).foregroundStyle(KomiicTheme.accent)
-            if let categories, !categories.isEmpty {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 150 : 92), spacing: 8)],
-                          alignment: .leading, spacing: 8) {
-                    ForEach(Array(categories.sorted { $0.count > $1.count }.prefix(5))) { category in
-                        HStack(spacing: 5) {
-                            Text(category.name)
-                            Text(category.count.formatted()).fontWeight(.semibold).monospacedDigit()
-                                .padding(.horizontal, 6).padding(.vertical, 3)
-                                .background(KomiicTheme.softBlue, in: Capsule())
-                        }
-                        .font(.subheadline).padding(.horizontal, 9).padding(.vertical, 5)
-                        .frame(maxWidth: .infinity).background(KomiicTheme.softBlue, in: Capsule())
-                    }
-                }
-            } else {
-                Text(categories != nil ? "暂无记录" : (loading ? "正在读取…" : "分类暂不可用"))
-                    .font(.subheadline).foregroundStyle(.secondary)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading).padding(16).komiicCard()
     }
 
     private func collectionLinks(_ profile: KomiicAccountProfile) -> some View {
@@ -256,7 +231,7 @@ private struct AccountContentView: View {
     private func collectionButton(_ title: String, value: Int?, symbol: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             VStack(spacing: 10) {
-                Image(systemName: symbol).font(.title3).foregroundStyle(KomiicTheme.accent)
+                Image(systemName: symbol).font(.title3).foregroundStyle(theme.accent)
                 Text(value?.formatted() ?? "—").font(.title3.weight(.semibold)).foregroundStyle(.primary)
                 Text(title).font(.caption2).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.75)
             }
@@ -311,6 +286,7 @@ private struct AccountContentView: View {
 
 struct BlockedComicsView: View {
     @EnvironmentObject private var library: LibraryStore
+    @Environment(\.komiicTheme) private var theme
     @State private var loadErrors: Set<String> = []
 
     var body: some View {
@@ -347,8 +323,11 @@ struct BlockedComicsView: View {
                         .font(.caption).buttonStyle(.bordered)
                 }
                 .padding(.vertical, 4)
+                .listRowBackground(theme.card)
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(theme.canvas)
         .navigationTitle("屏蔽漫画").navigationBarTitleDisplayMode(.inline)
         .task(id: library.activeMode) {
             await library.refreshOfficialLibrary(force: false)

@@ -50,6 +50,35 @@ final class LibraryStoreTests: XCTestCase {
         XCTAssertEqual(store.progress(for: comic.id)?.page, 4)
     }
 
+    func testRecentReadingRemovalSurvivesReloadAndKeepsTheReadingPosition() throws {
+        let url = try directory()
+        let comic = Comic(id: "shared", title: "最近阅读")
+        let chapter = Chapter(id: "chapter")
+        let other = Comic(id: "other", title: "另一部漫画")
+        let store = LibraryStore(directoryURL: url, sessionScope: { _ in nil })
+        store.recordProgress(comic: other, chapter: Chapter(id: "other-chapter"), page: 0, totalPages: 10)
+        store.recordProgress(comic: comic, chapter: chapter, page: 3, totalPages: 10)
+        store.toggleBookmark(comic: comic, chapter: chapter, page: 3)
+        store.removeFromRecentReading(comicID: comic.id)
+
+        let restored = LibraryStore(directoryURL: url, sessionScope: { _ in nil })
+        XCTAssertEqual(restored.recentReading.map(\.id), [other.id])
+        XCTAssertFalse(restored.isInRecentReading(comicID: comic.id))
+        XCTAssertEqual(restored.progress(for: comic.id)?.page, 3)
+        XCTAssertEqual(restored.readComicCount, 2)
+        XCTAssertTrue(restored.isChapterRead(chapter.id))
+        XCTAssertTrue(restored.isBookmarked(chapterID: chapter.id, page: 3))
+
+        restored.selectMode(.adult)
+        restored.recordProgress(comic: comic, chapter: chapter, page: 2, totalPages: 10)
+        XCTAssertTrue(restored.isInRecentReading(comicID: comic.id))
+        restored.selectMode(.general)
+        XCTAssertFalse(restored.isInRecentReading(comicID: comic.id))
+        restored.recordProgress(comic: comic, chapter: chapter, page: 4, totalPages: 10)
+        XCTAssertTrue(restored.isInRecentReading(comicID: comic.id))
+        XCTAssertEqual(LibraryStore(directoryURL: url, sessionScope: { _ in nil }).recentReading.first?.page, 4)
+    }
+
     func testJumpedReadChaptersAndLastRevisitedChapterSurviveReload() throws {
         let url = try directory()
         let comic = Comic(id: "comic", title: "测试")

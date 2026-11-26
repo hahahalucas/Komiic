@@ -42,6 +42,7 @@ private struct LibraryPartition: Codable {
     var bookmarks: [ReadingBookmark] = []
     var shelves: [Bookshelf] = []
     var history: [ReadingProgress] = []
+    var hiddenRecentComicIDs: [String: Set<String>] = [:]
     var blockedComicIDs: Set<String> = []
     var readChapterIDs: Set<String> = []
     var blockedComics: [Comic] = []
@@ -49,7 +50,7 @@ private struct LibraryPartition: Codable {
     init() {}
 
     enum CodingKeys: String, CodingKey {
-        case favorites, bookmarks, shelves, history, blockedComicIDs, readChapterIDs, blockedComics
+        case favorites, bookmarks, shelves, history, hiddenRecentComicIDs, blockedComicIDs, readChapterIDs, blockedComics
     }
 
     init(from decoder: Decoder) throws {
@@ -58,6 +59,7 @@ private struct LibraryPartition: Codable {
         bookmarks = try values.decodeIfPresent([ReadingBookmark].self, forKey: .bookmarks) ?? []
         shelves = try values.decodeIfPresent([Bookshelf].self, forKey: .shelves) ?? []
         history = try values.decodeIfPresent([ReadingProgress].self, forKey: .history) ?? []
+        hiddenRecentComicIDs = try values.decodeIfPresent([String: Set<String>].self, forKey: .hiddenRecentComicIDs) ?? [:]
         blockedComicIDs = try values.decodeIfPresent(Set<String>.self, forKey: .blockedComicIDs) ?? []
         readChapterIDs = try values.decodeIfPresent(Set<String>.self, forKey: .readChapterIDs) ?? []
         blockedComics = try values.decodeIfPresent([Comic].self, forKey: .blockedComics) ?? []
@@ -143,6 +145,13 @@ final class LibraryStore: ObservableObject {
     var readComicCount: Int { Set(history.map { $0.comic.id }).count }
     var readChapterCount: Int { readChapterIDs.count }
     var pendingOfficialChangeCount: Int { pendingOfficialChanges.count }
+    var recentReading: [ReadingProgress] {
+        let hidden = hiddenRecentComicIDs
+        return history.filter { !hidden.contains($0.comic.id) }
+    }
+    private var hiddenRecentComicIDs: Set<String> {
+        partition(for: activeMode).hiddenRecentComicIDs[recentReadingScope(for: activeMode)] ?? []
+    }
 
     init(directoryURL: URL? = nil, initialMode: ComicContentMode = .general,
          officialClient: OfficialLibraryClient = .live,
@@ -277,7 +286,12 @@ final class LibraryStore: ObservableObject {
         guard totalPages > 0 else { return }
         let progress = ReadingProgress(comic: comic, chapter: chapter, page: min(max(0, page), totalPages - 1), totalPages: totalPages, date: Date())
         let targetMode = mode ?? activeMode
+        let scope = recentReadingScope(for: targetMode)
         if let accountID = officialAccountIDs[targetMode] {
+            var archive = partition(for: targetMode)
+            if archive.hiddenRecentComicIDs[scope]?.remove(comic.id) != nil {
+                setPartition(archive, for: targetMode)
+            }
             var snapshot = officialSnapshots[targetMode] ?? OfficialLibrarySnapshot()
             snapshot.history.removeAll { $0.comic.id == comic.id }
             snapshot.history.insert(progress, at: 0)
@@ -291,7 +305,8 @@ final class LibraryStore: ObservableObject {
             if targetMode == activeMode { apply(partition(for: targetMode)) }
             return
         }
-        updatePartition(mode: mode) { archive in
+        updatePartition(mode: targetMode) { archive in
+            archive.hiddenRecentComicIDs[scope]?.remove(comic.id)
             archive.history.removeAll { $0.comic.id == comic.id }
             archive.history.insert(progress, at: 0)
             archive.readChapterIDs.insert(chapter.id)
@@ -299,6 +314,20 @@ final class LibraryStore: ObservableObject {
     }
 
     func progress(for comicID: String) -> ReadingProgress? { history.first { $0.comic.id == comicID } }
+
+    func isInRecentReading(comicID: String) -> Bool {
+        !hiddenRecentComicIDs.contains(comicID) && progress(for: comicID) != nil
+    }
+
+    func removeFromRecentReading(comicID: String) {
+        guard isInRecentReading(comicID: comicID) else { return }
+        let scope = recentReadingScope(for: activeMode)
+        updatePartition { $0.hiddenRecentComicIDs[scope, default: []].insert(comicID) }
+    }
+
+    private func recentReadingScope(for mode: ComicContentMode) -> String {
+        officialAccountIDs[mode].map { "account:\($0)" } ?? "guest"
+    }
 
     @discardableResult
     func createShelf(name: String) -> Bookshelf? {
@@ -341,6 +370,15 @@ final class LibraryStore: ObservableObject {
             return
         }
         updatePartition { $0.shelves[index].comics.insert(comic, at: 0) }
+    }
+
+    func toggleShelfMembership(_ comic: Comic, shelfID: UUID) {
+        guard let shelf = shelves.first(where: { $0.id == shelfID }) else { return }
+        if shelf.comics.contains(where: { $0.id == comic.id }) {
+            removeFromShelf(comicID: comic.id, shelfID: shelfID)
+        } else {
+            addToShelf(comic, shelfID: shelfID)
+        }
     }
 
     func removeFromShelf(comicID: String, shelfID: UUID) {
@@ -404,6 +442,7 @@ final class LibraryStore: ObservableObject {
     func clearHistory() {
         updatePartition { archive in
             archive.history = []
+            archive.hiddenRecentComicIDs["guest"] = nil
             archive.readChapterIDs = []
         }
     }

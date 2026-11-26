@@ -159,19 +159,22 @@ private struct TabRootScreen: View {
     let showSearch: () -> Void
     @EnvironmentObject private var settings: ReaderSettings
     @EnvironmentObject private var library: LibraryStore
-    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.komiicTheme) private var theme
+    @State private var showingPalette = false
 
     var body: some View {
         NavigationStack(path: $path) {
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(KomiicTheme.canvas)
+                .background(theme.canvas)
                 .navigationTitle(settings.contentMode == .adult ? "H 漫画 · \(tab.title)" : tab.title)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItemGroup(placement: .topBarTrailing) {
                         Button(action: showSearch) { Image(systemName: "magnifyingglass") }
                             .accessibilityLabel("搜索漫画")
+                        Button { showingPalette = true } label: { Image(systemName: "paintpalette") }
+                            .accessibilityLabel("调色盘")
                         Menu {
                             NavigationLink(value: MenuRoute.blocked) { Label("屏蔽漫画", systemImage: "eye.slash") }
                             NavigationLink(value: MenuRoute.warnings) { Label("内容警告偏好", systemImage: "shield") }
@@ -183,9 +186,6 @@ private struct TabRootScreen: View {
                             } label: {
                                 Label(settings.contentMode == .general ? "切换到 H 漫画 · 18+" : "切换到一般漫画", systemImage: "arrow.triangle.2.circlepath")
                             }
-                            Button {
-                                settings.theme = colorScheme == .dark ? .light : .dark
-                            } label: { Label("切换主题", systemImage: colorScheme == .dark ? "sun.max" : "moon") }
                         } label: { Image(systemName: "person.crop.circle") }
                         .accessibilityLabel("更多功能")
                     }
@@ -205,6 +205,7 @@ private struct TabRootScreen: View {
                     }
                 }
         }
+        .sheet(isPresented: $showingPalette) { ThemePaletteView() }
         .environment(\.openAuthor) { path.append($0) }
         .environment(\.openComicDirectory) { path.append($0) }
     }

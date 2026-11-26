@@ -5,6 +5,7 @@ struct ComicCommentsDrawer: View {
     let mode: ComicContentMode
     let onClose: () -> Void
     @EnvironmentObject private var content: AppContentStore
+    @Environment(\.komiicTheme) private var theme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var visible = false
@@ -24,7 +25,7 @@ struct ComicCommentsDrawer: View {
                         .frame(width: width(in: geometry.size.width), height: geometry.size.height)
                         .background {
                             UnevenRoundedRectangle(topLeadingRadius: 22, bottomLeadingRadius: 22)
-                                .fill(KomiicTheme.canvas).ignoresSafeArea(.container, edges: [.top, .bottom, .trailing])
+                                .fill(theme.canvas).ignoresSafeArea(.container, edges: [.top, .bottom, .trailing])
                         }
                         .transition(reduceMotion ? .opacity : .move(edge: .trailing))
                 }
@@ -57,6 +58,7 @@ private struct ComicCommentsPanel: View {
     let comicID: String
     let mode: ComicContentMode
     let close: () -> Void
+    @Environment(\.komiicTheme) private var theme
     @StateObject private var model: CommentListModel
     @State private var votes: [String: Bool]?
     @State private var votesFailed = false
@@ -149,7 +151,7 @@ private struct ComicCommentsPanel: View {
             HStack {
                 if let replyTo {
                     Label("回复 \(replyTo.authorName)", systemImage: "arrowshape.turn.up.left")
-                        .lineLimit(1).foregroundStyle(KomiicTheme.accent)
+                        .lineLimit(1).foregroundStyle(theme.accent)
                 }
                 Spacer(minLength: 4)
                 Button("取消") {

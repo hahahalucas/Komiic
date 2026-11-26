@@ -4,6 +4,7 @@ import SwiftUI
 struct SearchPromptView: View {
     let onCancel: () -> Void
     let onSearch: (String) -> Void
+    @Environment(\.komiicTheme) private var theme
     @State private var keyword = ""
     @FocusState private var focused: Bool
 
@@ -38,7 +39,7 @@ struct SearchPromptView: View {
             }
             .padding(28)
             .frame(maxWidth: 420)
-            .background(KomiicTheme.card, in: RoundedRectangle(cornerRadius: 30))
+            .background(theme.card, in: RoundedRectangle(cornerRadius: 30))
             .shadow(color: .black.opacity(0.12), radius: 24, y: 8)
             .padding(28)
             .accessibilityAddTraits(.isModal)

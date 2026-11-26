@@ -89,9 +89,11 @@ final class ReaderCanvasTests: XCTestCase {
     }
 
     func testReaderControlsSitBelowDynamicIslandAndLegacySafeAreas() {
-        XCTAssertEqual(ReaderChromePlacement.topPadding(safeAreaTop: 59), 67)
-        XCTAssertEqual(ReaderChromePlacement.topPadding(safeAreaTop: 20), 28)
-        XCTAssertEqual(ReaderChromePlacement.topPadding(safeAreaTop: 0), 8)
+        XCTAssertEqual(ReaderChromePlacement.topPadding(safeAreaTop: 59, isPhone: true), 53)
+        XCTAssertEqual(ReaderChromePlacement.topPadding(safeAreaTop: 62, isPhone: true), 56)
+        XCTAssertEqual(ReaderChromePlacement.topPadding(safeAreaTop: 47, isPhone: true), 55)
+        XCTAssertEqual(ReaderChromePlacement.topPadding(safeAreaTop: 0, isPhone: true), 8)
+        XCTAssertEqual(ReaderChromePlacement.topPadding(safeAreaTop: 24, isPhone: false), 32)
     }
 
     private func makeController(pageCount: Int = 4, mode: ReaderCanvasMode = .chapter) -> ReaderCanvasController {

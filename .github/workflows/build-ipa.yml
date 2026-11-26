@@ -26,6 +26,7 @@ on:
       - codex/komiic-0.8.0
       - codex/komiic-0.9.0
       - codex/komiic-0.1.0
+      - codex/komiic-1.0.1
 
 permissions:
   contents: read

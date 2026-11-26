@@ -5,6 +5,7 @@ struct ComicDetailView: View {
     @EnvironmentObject private var library: LibraryStore
     @EnvironmentObject private var downloads: DownloadStore
     @EnvironmentObject private var settings: ReaderSettings
+    @Environment(\.komiicTheme) private var theme
     @Environment(\.openAuthor) private var openAuthor
     @State private var detail: Comic?
     @State private var chapters: [Chapter] = []
@@ -52,8 +53,8 @@ struct ComicDetailView: View {
                                 return .handled
                             })
                         Text(displayedComic.displayStatus).font(.caption.weight(.semibold))
-                            .foregroundStyle(KomiicTheme.accent).padding(.horizontal, 10).padding(.vertical, 5)
-                            .background(KomiicTheme.softBlue, in: Capsule())
+                            .foregroundStyle(theme.accent).padding(.horizontal, 10).padding(.vertical, 5)
+                            .background(theme.accentWash, in: Capsule())
                         HStack(spacing: 12) {
                             Label(compactCount(displayedComic.views), systemImage: "eye")
                             Label(compactCount(displayedComic.favoriteCount), systemImage: "heart")
@@ -78,7 +79,7 @@ struct ComicDetailView: View {
                         HStack {
                             ForEach(displayedComic.categories, id: \.self) { category in
                                 Text(category).font(.caption).padding(.horizontal, 12).padding(.vertical, 7)
-                                    .background(KomiicTheme.softBlue, in: Capsule()).foregroundStyle(KomiicTheme.accent)
+                                    .background(theme.accentWash, in: Capsule()).foregroundStyle(theme.accent)
                             }
                         }
                     }
@@ -117,8 +118,8 @@ struct ComicDetailView: View {
                             Button { expandedTypes.insert(chapterType) } label: {
                                 Image(systemName: "eye").font(.title3)
                                     .frame(maxWidth: .infinity, minHeight: 64)
-                                    .foregroundStyle(KomiicTheme.accent)
-                                    .background(KomiicTheme.card, in: RoundedRectangle(cornerRadius: 10))
+                                    .foregroundStyle(theme.accent)
+                                    .background(theme.card, in: RoundedRectangle(cornerRadius: 10))
                                     .overlay(RoundedRectangle(cornerRadius: 10).stroke(KomiicTheme.line, lineWidth: 1))
                             }.buttonStyle(.plain)
                                 .accessibilityLabel("展开隐藏的 \(hidden.count) 个章节")
@@ -136,7 +137,7 @@ struct ComicDetailView: View {
             }.padding(20).padding(.bottom, library.progress(for: comic.id) == nil ? 0 : 88)
                 .frame(maxWidth: 960).frame(maxWidth: .infinity)
         }
-        .background(KomiicTheme.canvas)
+        .background(theme.canvas)
         .navigationTitle("漫画详情").navigationBarTitleDisplayMode(.inline)
         .toolbar(.visible, for: .navigationBar)
         .toolbar {
@@ -154,7 +155,7 @@ struct ComicDetailView: View {
                         Text("\(progress.chapter.displayTitle) · 第 \(progress.page + 1) 页")
                             .font(.caption).lineLimit(1)
                     }.padding(.horizontal, 16).padding(.vertical, 12)
-                        .foregroundStyle(KomiicTheme.accent)
+                        .foregroundStyle(theme.accent)
                         .komiicGlass(cornerRadius: 18, interactive: true)
                 }.buttonStyle(.plain).padding(.trailing, 20).padding(.bottom, 10)
                     .accessibilityLabel("继续阅读，\(progress.chapter.displayTitle)，第 \(progress.page + 1) 页")
@@ -179,7 +180,7 @@ struct ComicDetailView: View {
         Button { setCommentsPresented(true) } label: {
             HStack {
                 Label("评论区", systemImage: "bubble.left.and.bubble.right")
-                    .font(.subheadline.weight(.semibold)).foregroundStyle(KomiicTheme.accent)
+                    .font(.subheadline.weight(.semibold)).foregroundStyle(theme.accent)
                 Spacer(minLength: 8)
                 Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
             }
@@ -261,8 +262,8 @@ struct ComicDetailView: View {
                     .font(.subheadline.weight(.medium)).lineLimit(1).minimumScaleFactor(0.7)
                 Text("\(chapter.size) 页").font(.caption2).foregroundStyle(.secondary)
             }.frame(maxWidth: .infinity, minHeight: 64)
-                .foregroundStyle(read ? Color.secondary : KomiicTheme.accent)
-                .background(read ? Color.primary.opacity(0.15) : KomiicTheme.card,
+                .foregroundStyle(read ? Color.secondary : theme.accent)
+                .background(read ? Color.primary.opacity(0.15) : theme.card,
                             in: RoundedRectangle(cornerRadius: 10))
                 .overlay(RoundedRectangle(cornerRadius: 10).stroke(KomiicTheme.line, lineWidth: 1))
                 .overlay(alignment: .topTrailing) {
@@ -270,7 +271,7 @@ struct ComicDetailView: View {
                         ProgressView().controlSize(.mini).padding(5)
                     } else if downloads.isDownloaded(chapterID: chapter.id) {
                         Image(systemName: "checkmark.circle.fill").font(.system(size: 10))
-                            .foregroundStyle(KomiicTheme.accent).padding(5)
+                            .foregroundStyle(theme.accent).padding(5)
                     }
                 }
         }.buttonStyle(.plain)
@@ -304,6 +305,7 @@ struct ComicDetailView: View {
 private struct AddToShelfView: View {
     let comic: Comic
     @EnvironmentObject private var library: LibraryStore
+    @Environment(\.komiicTheme) private var theme
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
     var body: some View {
@@ -323,6 +325,7 @@ private struct AddToShelfView: View {
                 } footer: {
                     if let error = library.officialSyncError { Text(error) }
                 }
+                .listRowBackground(theme.card)
                 Section("新建书柜") {
                     TextField("书柜名称", text: $name)
                     Button("创建并加入") {
@@ -332,33 +335,30 @@ private struct AddToShelfView: View {
                         }
                     }.disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
+                .listRowBackground(theme.card)
             }
+            .scrollContentBackground(.hidden)
+            .background(theme.canvas)
             .navigationTitle("加入书柜").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("完成") { dismiss() } } }
         }
         .task { await library.refreshOfficialLibrary(force: false) }
     }
 
-    @ViewBuilder private func shelfRow(_ shelf: Bookshelf) -> some View {
-        if shelf.comics.contains(where: { $0.id == comic.id }) {
-            shelfLabel(shelf.name, added: true)
-                .accessibilityElement(children: .combine).accessibilityValue("已加入")
-        } else {
-            Button { library.addToShelf(comic, shelfID: shelf.id) } label: {
-                shelfLabel(shelf.name, added: false)
+    private func shelfRow(_ shelf: Bookshelf) -> some View {
+        let added = shelf.comics.contains { $0.id == comic.id }
+        return Button { library.toggleShelfMembership(comic, shelfID: shelf.id) } label: {
+            HStack {
+                Label(shelf.name, systemImage: "books.vertical")
+                Spacer(minLength: 8)
+                if added {
+                    Image(systemName: "checkmark.circle.fill").font(.body.weight(.semibold)).accessibilityHidden(true)
+                }
             }
-            .buttonStyle(.plain).accessibilityValue("未加入")
+            .foregroundStyle(theme.accent).contentShape(Rectangle())
         }
-    }
-
-    private func shelfLabel(_ name: String, added: Bool) -> some View {
-        HStack {
-            Label(name, systemImage: "books.vertical")
-            Spacer(minLength: 8)
-            if added {
-                Image(systemName: "checkmark.circle.fill").font(.body.weight(.semibold)).accessibilityHidden(true)
-            }
-        }
-        .foregroundStyle(KomiicTheme.accent).contentShape(Rectangle())
+        .buttonStyle(.plain)
+        .accessibilityValue(added ? "已加入" : "未加入")
+        .accessibilityHint(added ? "轻点移出书柜" : "轻点加入书柜")
     }
 }

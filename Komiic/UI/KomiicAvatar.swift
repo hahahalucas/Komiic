@@ -8,6 +8,7 @@ struct KomiicAvatar: View {
     let size: CGFloat
     var profileTextColor: String? = nil
     var profileBackgroundColor: String? = nil
+    @Environment(\.komiicTheme) private var theme
     @State private var image: UIImage?
 
     private var initials: String {
@@ -17,7 +18,7 @@ struct KomiicAvatar: View {
 
     var body: some View {
         ZStack {
-            Circle().fill(avatarColor(profileBackgroundColor) ?? KomiicTheme.accent)
+            Circle().fill(avatarColor(profileBackgroundColor) ?? theme.accent)
             if let image {
                 Image(uiImage: image).resizable().scaledToFill()
             } else if initials.isEmpty {

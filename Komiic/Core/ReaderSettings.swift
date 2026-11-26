@@ -13,6 +13,22 @@ enum AppTheme: String, CaseIterable, Identifiable, Codable {
     }
 }
 
+enum AppPalette: String, CaseIterable, Identifiable {
+    case standard, rose, violet, green, amber, silver
+
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .standard: return "默认"
+        case .rose: return "玫瑰"
+        case .violet: return "紫罗兰"
+        case .green: return "草原"
+        case .amber: return "琥珀"
+        case .silver: return "银薰"
+        }
+    }
+}
+
 enum ReadingMode: String, CaseIterable, Identifiable, Codable {
     case scroll, paged
     var id: String { rawValue }
@@ -64,6 +80,7 @@ enum ImageLoadingMode: String, CaseIterable, Identifiable, Codable {
 @MainActor
 final class ReaderSettings: ObservableObject {
     @Published var theme: AppTheme { didSet { save(theme.rawValue, "theme") } }
+    @Published var palette: AppPalette { didSet { save(palette.rawValue, "palette") } }
     @Published var contentMode: ComicContentMode { didSet { save(contentMode.rawValue, "contentMode") } }
     @Published private(set) var warningPreferences: [String: ContentWarningAction] {
         didSet {
@@ -100,6 +117,7 @@ final class ReaderSettings: ObservableObject {
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         theme = AppTheme(rawValue: defaults.string(forKey: "komiic.theme") ?? "") ?? .system
+        palette = AppPalette(rawValue: defaults.string(forKey: "komiic.palette") ?? "") ?? .standard
         contentMode = ComicContentMode(rawValue: defaults.string(forKey: "komiic.contentMode") ?? "") ?? .general
         warningPreferences = defaults.data(forKey: "komiic.warningPreferences")
             .flatMap { try? JSONDecoder().decode([String: ContentWarningAction].self, from: $0) } ?? [:]

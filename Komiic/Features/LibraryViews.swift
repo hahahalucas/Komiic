@@ -43,6 +43,7 @@ struct FavoritesView: View {
 
 struct BookmarksView: View {
     @Environment(\.openComicDirectory) private var openComicDirectory
+    @Environment(\.komiicTheme) private var theme
     @EnvironmentObject private var library: LibraryStore
     @EnvironmentObject private var settings: ReaderSettings
     @State private var launch: ReaderLaunch?
@@ -66,7 +67,7 @@ struct BookmarksView: View {
                                 Text(bookmark.date, style: .date).font(.caption2).foregroundStyle(.tertiary)
                             }
                             Spacer(minLength: 0)
-                            Image(systemName: "bookmark.fill").foregroundStyle(KomiicTheme.accent)
+                            Image(systemName: "bookmark.fill").foregroundStyle(theme.accent)
                         }.padding(13).komiicCard()
                     }.buttonStyle(.plain)
                     .contextMenu {
@@ -141,6 +142,7 @@ struct ShelfDetailView: View {
     let shelfID: UUID
     @EnvironmentObject private var library: LibraryStore
     @EnvironmentObject private var settings: ReaderSettings
+    @Environment(\.komiicTheme) private var theme
     @Environment(\.dismiss) private var dismiss
     @State private var rename = false
     @State private var deletion = false
@@ -157,6 +159,7 @@ struct ShelfDetailView: View {
                         ForEach(shelf.comics.filter { !settings.shouldHide($0) && !library.isBlocked($0) }) { comic in
                             ComicActivation(comic: comic) { ComicCard(comic: comic) }.buttonStyle(.plain)
                                 .contextMenu {
+                                    RemoveRecentReadingButton(comicID: comic.id)
                                     Button("移出书柜", role: .destructive) { library.removeFromShelf(comicID: comic.id, shelfID: shelfID) }
                                 }
                         }
@@ -164,7 +167,7 @@ struct ShelfDetailView: View {
                 }
             }
         }
-        .background(KomiicTheme.canvas)
+        .background(theme.canvas)
         .navigationTitle(shelf?.name ?? "书柜")
         .refreshable { await library.refreshOfficialLibrary() }
         .toolbar {
@@ -187,19 +190,25 @@ struct ShelfDetailView: View {
 struct HistoryView: View {
     @EnvironmentObject private var library: LibraryStore
     @EnvironmentObject private var settings: ReaderSettings
+    @Environment(\.komiicTheme) private var theme
+    private var visibleHistory: [ReadingProgress] {
+        library.recentReading.filter { !settings.shouldHide($0.comic) && !library.isBlocked($0.comic) }
+    }
+
     var body: some View {
+        let history = visibleHistory
         ScrollView {
             VStack(spacing: 14) {
-                if library.history.isEmpty {
+                if history.isEmpty {
                     EmptyState(symbol: "clock.arrow.circlepath", title: "故事，从这里继续", message: "阅读漫画后，这里会自动记录你的进度。")
                 }
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 3), spacing: 18) {
-                    ForEach(library.history.filter { !settings.shouldHide($0.comic) && !library.isBlocked($0.comic) }) { progress in
+                    ForEach(history) { progress in
                         ComicActivation(comic: progress.comic) {
                             ComicCard(comic: progress.comic, progressLabel: "第 \(progress.page + 1) 页")
                                 .overlay(alignment: .bottom) {
                                     if progress.totalPages > 0 {
-                                        ProgressView(value: progress.fraction).tint(KomiicTheme.accent)
+                                        ProgressView(value: progress.fraction).tint(theme.accent)
                                     }
                                 }
                         }
@@ -208,6 +217,7 @@ struct HistoryView: View {
                 }
             }.padding(16)
         }
+        .scrollBounceBehavior(.always, axes: .vertical)
         .refreshable { await library.refreshOfficialLibrary() }
     }
 }

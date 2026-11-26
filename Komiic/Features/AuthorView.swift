@@ -4,6 +4,7 @@ struct AuthorView: View {
     let author: ComicAuthor
     @EnvironmentObject private var library: LibraryStore
     @EnvironmentObject private var settings: ReaderSettings
+    @Environment(\.komiicTheme) private var theme
     @State private var comics: [Comic] = []
     @State private var loading = true
     @State private var error: String?
@@ -25,7 +26,7 @@ struct AuthorView: View {
                 }
             }.padding(18).frame(maxWidth: 1_200).frame(maxWidth: .infinity)
         }
-        .background(KomiicTheme.canvas)
+        .background(theme.canvas)
         .navigationTitle(author.name).navigationBarTitleDisplayMode(.inline)
         .task(id: retry) { await load() }
         .refreshable { await load() }

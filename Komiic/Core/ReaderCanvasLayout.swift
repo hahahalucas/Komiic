@@ -70,5 +70,10 @@ struct ReaderCanvasLayout: Equatable {
 }
 
 enum ReaderChromePlacement {
-    static func topPadding(safeAreaTop: CGFloat) -> CGFloat { max(0, safeAreaTop) + 8 }
+    static func topPadding(safeAreaTop: CGFloat, isPhone: Bool) -> CGFloat {
+        // The tall iPhone inset includes clearance below the compact Dynamic Island.
+        // Move the surface into that clearance while the controls' own padding keeps them in the safe area.
+        if isPhone, safeAreaTop >= 59 { return safeAreaTop - 6 }
+        return max(0, safeAreaTop) + 8
+    }
 }

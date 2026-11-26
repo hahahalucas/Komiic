@@ -6,6 +6,7 @@ struct WebsiteView: View {
     var title = "Komiic 官网"
     var onClose: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.komiicTheme) private var theme
     @State private var loading = true
     @State private var errorMessage: String?
     @State private var reloadID = UUID()
@@ -22,7 +23,7 @@ struct WebsiteView: View {
                 if let errorMessage {
                     EmptyState(symbol: "wifi.exclamationmark", title: "网页未能载入", message: errorMessage,
                                actionTitle: "重试", action: { self.errorMessage = nil; reloadID = UUID() })
-                    .background(KomiicTheme.canvas)
+                    .background(theme.canvas)
                 }
             }
             .navigationTitle(title).navigationBarTitleDisplayMode(.inline)

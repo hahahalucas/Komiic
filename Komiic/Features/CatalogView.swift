@@ -140,7 +140,7 @@ struct CatalogView: View {
             .padding(.horizontal, 12).padding(.vertical, 8)
 
             Divider().opacity(0.4)
-            pageControls
+            if page != .history { pageControls }
 
             // Native paging tracks the drag continuously and settles onto the next page.
             TabView(selection: $page) {
@@ -174,20 +174,17 @@ struct CatalogView: View {
                 }
                 .pickerStyle(.segmented).frame(maxWidth: 230)
             } else {
-                Text(page == .popular ? "这个月，大家都在看" :
-                       page == .recommended ? "发现下一部好漫画" : "回顾最近读过的故事")
+                Text(page == .popular ? "这个月，大家都在看" : "发现下一部好漫画")
                     .font(.subheadline).foregroundStyle(.secondary)
                     .lineLimit(1).minimumScaleFactor(0.8)
             }
             Spacer(minLength: 0)
-            if page != .history {
-                Button { showFilter = true } label: {
-                    Image(systemName: filter == .all ? "line.3.horizontal.decrease" : "line.3.horizontal.decrease.circle.fill")
-                        .font(.system(size: 19)).padding(9)
-                }
-                .komiicActionStyle()
-                .accessibilityLabel("筛选选项")
+            Button { showFilter = true } label: {
+                Image(systemName: filter == .all ? "line.3.horizontal.decrease" : "line.3.horizontal.decrease.circle.fill")
+                    .font(.system(size: 19)).padding(9)
             }
+            .komiicActionStyle()
+            .accessibilityLabel("筛选选项")
         }
         .frame(minHeight: 44)
         .padding(.horizontal, 14).padding(.vertical, 6)
@@ -280,6 +277,7 @@ struct SearchView: View {
     @State private var error: String?
     @EnvironmentObject private var library: LibraryStore
     @EnvironmentObject private var settings: ReaderSettings
+    @Environment(\.komiicTheme) private var theme
     private var visibleComics: [Comic] { comics.filter { !library.isBlocked($0) && !settings.shouldHide($0) } }
 
     init(initialKeyword: String = "", onSelect: @escaping (Comic) -> Void) {
@@ -299,7 +297,7 @@ struct SearchView: View {
                 ComicGrid(comics: visibleComics, onSelect: onSelect).padding(14)
             }
         }
-        .background(KomiicTheme.canvas)
+        .background(theme.canvas)
         .navigationTitle("搜索")
         .searchable(text: $keyword, isPresented: $searchPresented,
                     placement: .navigationBarDrawer(displayMode: .always), prompt: "漫画名 / 作者")

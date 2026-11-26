@@ -33,23 +33,25 @@ private struct AppContainerView: View {
     }
 
     var body: some View {
-            RootView()
-                .environmentObject(library)
-                .environmentObject(downloads)
-                .environmentObject(settings)
-                .environmentObject(content)
-                .tint(KomiicTheme.accent)
-                .preferredColorScheme(settings.theme.colorScheme)
-                .task {
-                    downloads.applyCachePolicy(settings.cachePolicy)
-                    OrientationController.apply(settings.orientation)
-                }
-                .onChange(of: settings.orientation) { _, value in OrientationController.apply(value) }
-                .onChange(of: settings.cachePolicy) { _, value in downloads.applyCachePolicy(value) }
-                .onReceive(NotificationCenter.default.publisher(for: .komiicSessionDidChange).receive(on: DispatchQueue.main)) { _ in
-                    content.synchronizeSessionScopes()
-                    library.synchronizeSessionScopes()
-                }
+        let theme = KomiicTheme(palette: settings.palette)
+        RootView()
+            .environmentObject(library)
+            .environmentObject(downloads)
+            .environmentObject(settings)
+            .environmentObject(content)
+            .environment(\.komiicTheme, theme)
+            .tint(theme.accent)
+            .preferredColorScheme(settings.theme.colorScheme)
+            .task {
+                downloads.applyCachePolicy(settings.cachePolicy)
+                OrientationController.apply(settings.orientation)
+            }
+            .onChange(of: settings.orientation) { _, value in OrientationController.apply(value) }
+            .onChange(of: settings.cachePolicy) { _, value in downloads.applyCachePolicy(value) }
+            .onReceive(NotificationCenter.default.publisher(for: .komiicSessionDidChange).receive(on: DispatchQueue.main)) { _ in
+                content.synchronizeSessionScopes()
+                library.synchronizeSessionScopes()
+            }
     }
 }
 

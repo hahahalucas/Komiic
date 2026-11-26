@@ -109,7 +109,8 @@ final class ContentPersistenceTests: XCTestCase {
     func testLegacyAccountSnapshotRestoresOfficialStatistics() throws {
         let data = Data(#"{"id":"A","username":"test","email":"test@example.invalid","dateCreated":"2026-01-01","readComicCount":2,"readChapterCount":3,"imageReadCount":4,"imageReadLimit":100,"resetAt":123,"commentCount":5,"commentLikes":6,"favoriteCount":1,"bookmarkCount":0,"folderCount":0,"followedFolderCount":0,"topCategories":[{"id":"1","name":"冒险","count":2}],"warningPreferences":[]}"#.utf8)
         let profile = try JSONDecoder().decode(KomiicAccountProfile.self, from: data)
-        XCTAssertEqual(profile.readingStats?.topCategories.first?.count, 2)
+        XCTAssertEqual(profile.readingStats?.comicsRead, 2)
+        XCTAssertEqual(profile.readingStats?.favoriteCount, 1)
         XCTAssertEqual(profile.imageQuota?.limit, 100)
         XCTAssertEqual(profile.messageStats?.totalUpvotes, 6)
         let updated = try JSONDecoder().decode(KomiicAccountProfile.self, from: JSONEncoder().encode(profile))

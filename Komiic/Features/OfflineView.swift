@@ -2,6 +2,7 @@ import SwiftUI
 
 struct OfflineView: View {
     @Environment(\.openComicDirectory) private var openComicDirectory
+    @Environment(\.komiicTheme) private var theme
     @EnvironmentObject private var downloads: DownloadStore
     @State private var launch: ReaderLaunch?
     @State private var deleting: String?
@@ -17,7 +18,7 @@ struct OfflineView: View {
                             .font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
-                }.foregroundStyle(KomiicTheme.accent).padding(17).komiicCard()
+                }.foregroundStyle(theme.accent).padding(17).komiicCard()
                 if downloads.items.isEmpty {
                     EmptyState(symbol: "arrow.down.circle", title: "还没有离线章节", message: "在漫画的章节目录中轻点下载按钮。")
                 }
@@ -30,7 +31,7 @@ struct OfflineView: View {
                                 Text(item.comic.title).font(.subheadline.bold()).lineLimit(2)
                                 Text(item.chapter.displayTitle).font(.caption).foregroundStyle(.secondary)
                                 Text("\(item.status.title) · \(item.downloadedPageIDs.count)/\(item.pages.count) 页")
-                                    .font(.caption2).foregroundStyle(KomiicTheme.accent)
+                                    .font(.caption2).foregroundStyle(theme.accent)
                             }
                             Spacer(minLength: 0)
                             Menu {

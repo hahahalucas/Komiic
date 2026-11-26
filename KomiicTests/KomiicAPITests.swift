@@ -154,7 +154,9 @@ final class KomiicAPITests: XCTestCase {
             case "accountQuery":
                 body = #"{"data":{"account":{"id":"7","nickname":"测试","email":"test@example.invalid","dateCreated":"2026-01-01T04:00:00Z","profileImageUrl":"","profileText":"测","profileTextColor":"\u0023fff","profileBackgroundColor":"\u0023315881","warningPreferences":[{"tag":"血腥","action":"WARN"}]}}}"#
             case "readingStats":
-                body = #"{"data":{"readingStats":{"comicsRead":9,"chaptersRead":42,"favoriteCount":3,"bookmarkCount":2,"folderCount":1,"followingFolderCount":5,"topCategories":[{"id":"1","name":"冒险","count":7}]}}}"#
+                let query = try XCTUnwrap(payload["query"] as? String)
+                XCTAssertFalse(query.contains("topCategories"))
+                body = #"{"data":{"readingStats":{"comicsRead":9,"chaptersRead":42,"favoriteCount":3,"bookmarkCount":2,"folderCount":1,"followingFolderCount":5}}}"#
             case "getImageLimit":
                 body = #"{"data":{"account":{"id":"7"},"getImageLimit":{"limit":800,"usage":195,"resetInSeconds":"5700"}}}"#
             case "messageStats":
@@ -178,7 +180,7 @@ final class KomiicAPITests: XCTestCase {
         XCTAssertEqual(quota.limit, 800)
         XCTAssertEqual(quota.fractionUsed, 195.0 / 800.0, accuracy: 0.0001)
         XCTAssertEqual(profile.messageStats?.totalUpvotes, 18)
-        XCTAssertEqual(profile.readingStats?.topCategories.first?.name, "冒险")
+        XCTAssertEqual(profile.readingStats?.chaptersRead, 42)
         XCTAssertEqual(profile.warningPreferences.first?.action, .warn)
         XCTAssertEqual(quota.resetAt.timeIntervalSinceNow, 5700, accuracy: 5)
         calls.update { $0.removeAll() }
@@ -198,7 +200,7 @@ final class KomiicAPITests: XCTestCase {
             case "getImageLimit":
                 body = #"{"data":{"account":{"id":"7"},"getImageLimit":{"limit":800,"usage":11,"resetInSeconds":5600}}}"#
             case "readingStats" where statisticsAvailable.value:
-                body = #"{"data":{"readingStats":{"comicsRead":9,"chaptersRead":42,"favoriteCount":3,"bookmarkCount":2,"folderCount":1,"followingFolderCount":5,"topCategories":[{"id":"1","name":"冒险","count":7}]}}}"#
+                body = #"{"data":{"readingStats":{"comicsRead":9,"chaptersRead":42,"favoriteCount":3,"bookmarkCount":2,"folderCount":1,"followingFolderCount":5}}}"#
             case "messageStats" where statisticsAvailable.value:
                 body = #"{"data":{"messageStats":{"totalMessages":4,"totalUpvotes":18}}}"#
             default:
@@ -216,7 +218,7 @@ final class KomiicAPITests: XCTestCase {
         XCTAssertNil(model.profile?.messageStats)
         statisticsAvailable.update { $0 = true }
         await model.load(refreshQuota: true)
-        XCTAssertEqual(model.profile?.readingStats?.topCategories.first?.name, "冒险")
+        XCTAssertEqual(model.profile?.readingStats?.comicsRead, 9)
         XCTAssertEqual(model.profile?.messageStats?.totalMessages, 4)
     }
 

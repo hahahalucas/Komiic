@@ -1,14 +1,70 @@
 import SwiftUI
+import UIKit
 
-enum KomiicTheme {
-    static let accent = Color(red: 0.22, green: 0.39, blue: 0.58)
-    static let canvas = Color(uiColor: .systemGroupedBackground)
-    static let card = Color(uiColor: .secondarySystemGroupedBackground)
+struct KomiicTheme {
+    let accent: Color
+    let canvas: Color
+    let card: Color
     static let line = Color.primary.opacity(0.08)
-    static let softBlue = accent.opacity(0.12)
+    var accentWash: Color { accent.opacity(0.12) }
+
+    init(palette: AppPalette = .standard) {
+        switch palette {
+        case .standard:
+            self.init(accent: Color(red: 0.22, green: 0.39, blue: 0.58),
+                      canvas: Color(uiColor: .systemGroupedBackground),
+                      card: Color(uiColor: .secondarySystemGroupedBackground))
+        case .rose:
+            self.init(light: (0xB07080, 0xFDFAFB, 0xFAF4F5), dark: (0xD4909A, 0x120E0F, 0x1E1618))
+        case .violet:
+            self.init(light: (0x7B6BAE, 0xFDFCFF, 0xF6F4FC), dark: (0x9E8FCC, 0x0E0C14, 0x1A1724))
+        case .green:
+            self.init(light: (0x5A8A6A, 0xFAFDFB, 0xF4FAF6), dark: (0x7ABAA0, 0x0C1210, 0x161E1A))
+        case .amber:
+            self.init(light: (0xA07050, 0xFDFCFA, 0xFAF6F2), dark: (0xD4A880, 0x12100E, 0x1E1A16))
+        case .silver:
+            self.init(light: (0x5C5A72, 0xFCFCFE, 0xF4F4F8), dark: (0xB8B4CC, 0x101014, 0x1C1C22))
+        }
+    }
+
+    private init(accent: Color, canvas: Color, card: Color) {
+        self.accent = accent
+        self.canvas = canvas
+        self.card = card
+    }
+
+    private typealias Colors = (accent: UInt32, canvas: UInt32, card: UInt32)
+
+    private init(light: Colors, dark: Colors) {
+        self.init(accent: Self.adaptiveColor(light: light.accent, dark: dark.accent),
+                  canvas: Self.adaptiveColor(light: light.canvas, dark: dark.canvas),
+                  card: Self.adaptiveColor(light: light.card, dark: dark.card))
+    }
+
+    private static func adaptiveColor(light: UInt32, dark: UInt32) -> Color {
+        Color(uiColor: UIColor { traits in
+            let rgb = traits.userInterfaceStyle == .dark ? dark : light
+            return UIColor(red: CGFloat((rgb >> 16) & 0xFF) / 255,
+                           green: CGFloat((rgb >> 8) & 0xFF) / 255,
+                           blue: CGFloat(rgb & 0xFF) / 255, alpha: 1)
+        })
+    }
+}
+
+private struct KomiicThemeKey: EnvironmentKey {
+    static let defaultValue = KomiicTheme()
+}
+
+extension EnvironmentValues {
+    var komiicTheme: KomiicTheme {
+        get { self[KomiicThemeKey.self] }
+        set { self[KomiicThemeKey.self] = newValue }
+    }
 }
 
 struct BrandMark: View {
+    @Environment(\.komiicTheme) private var theme
+
     var body: some View {
         HStack(spacing: 5) {
             Image(systemName: "square.stack.3d.up.fill")
@@ -17,7 +73,7 @@ struct BrandMark: View {
                 .font(.system(size: 18, weight: .heavy, design: .rounded))
                 .tracking(-1)
         }
-        .foregroundStyle(KomiicTheme.accent)
+        .foregroundStyle(theme.accent)
         .accessibilityLabel("Komiic")
     }
 }
@@ -28,14 +84,15 @@ struct EmptyState: View {
     let message: String
     var actionTitle: String? = nil
     var action: (() -> Void)? = nil
+    @Environment(\.komiicTheme) private var theme
 
     var body: some View {
         VStack(spacing: 14) {
             Image(systemName: symbol)
                 .font(.system(size: 36, weight: .light))
-                .foregroundStyle(KomiicTheme.accent)
+                .foregroundStyle(theme.accent)
                 .frame(width: 80, height: 80)
-                .background(KomiicTheme.softBlue, in: RoundedRectangle(cornerRadius: 25))
+                .background(theme.accentWash, in: RoundedRectangle(cornerRadius: 25))
             Text(title).font(.headline)
             Text(message).font(.subheadline).foregroundStyle(.secondary)
                 .multilineTextAlignment(.center).frame(maxWidth: 300)
@@ -52,6 +109,7 @@ struct PillButton: View {
     let title: String
     var selected = false
     let action: () -> Void
+    @Environment(\.komiicTheme) private var theme
 
     var body: some View {
         Button(action: action) {
@@ -59,8 +117,8 @@ struct PillButton: View {
                 .lineLimit(1).minimumScaleFactor(0.75)
                 .padding(.horizontal, 4)
                 .frame(maxWidth: .infinity, minHeight: 44)
-                .foregroundStyle(selected ? KomiicTheme.accent : Color.secondary)
-                .background(selected ? KomiicTheme.softBlue : Color.clear, in: Capsule())
+                .foregroundStyle(selected ? theme.accent : Color.secondary)
+                .background(selected ? theme.accentWash : Color.clear, in: Capsule())
         }
         .buttonStyle(.plain)
         .komiicGlass(cornerRadius: 24, interactive: true)
@@ -101,7 +159,15 @@ extension View {
     }
 
     func komiicCard() -> some View {
-        self.background(KomiicTheme.card, in: RoundedRectangle(cornerRadius: 18))
+        modifier(KomiicCardModifier())
+    }
+}
+
+private struct KomiicCardModifier: ViewModifier {
+    @Environment(\.komiicTheme) private var theme
+
+    func body(content: Content) -> some View {
+        content.background(theme.card, in: RoundedRectangle(cornerRadius: 18))
             .overlay(RoundedRectangle(cornerRadius: 18).stroke(KomiicTheme.line, lineWidth: 0.5))
     }
 }
@@ -110,10 +176,11 @@ private struct KomiicGlassModifier: ViewModifier {
     let cornerRadius: CGFloat
     let interactive: Bool
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.komiicTheme) private var theme
 
     @ViewBuilder func body(content: Content) -> some View {
         if reduceTransparency {
-            content.background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: cornerRadius))
+            content.background(theme.card, in: RoundedRectangle(cornerRadius: cornerRadius))
                 .overlay(RoundedRectangle(cornerRadius: cornerRadius).stroke(KomiicTheme.line, lineWidth: 1))
         } else if #available(iOS 26.0, *) {
             content.glassEffect(.regular.interactive(interactive), in: RoundedRectangle(cornerRadius: cornerRadius))

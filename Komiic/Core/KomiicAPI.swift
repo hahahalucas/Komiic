@@ -194,8 +194,7 @@ struct KomiicAPI: Sendable {
     func accountReadingStats() async throws -> AccountReadingStats {
         let data: ReadingStatsResult = try await perform("readingStats", query: """
             query readingStats {
-                readingStats { comicsRead chaptersRead favoriteCount bookmarkCount folderCount followingFolderCount
-                    topCategories { id: categoryId name: categoryName count } }
+                readingStats { comicsRead chaptersRead favoriteCount bookmarkCount folderCount followingFolderCount }
             }
             """, variables: [:])
         return data.readingStats

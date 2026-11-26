@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ContentWarningPreferencesView: View {
     @EnvironmentObject private var settings: ReaderSettings
+    @Environment(\.komiicTheme) private var theme
     @State private var connected = false
     @State private var loading = false
     @State private var savingTag: String?
@@ -23,6 +24,7 @@ struct ContentWarningPreferencesView: View {
             } footer: {
                 Text(connected ? "偏好会保存在本机，并同步到 Komiic 官网。" : "偏好保存在本机。登录 Komiic 后可同步官网偏好。")
             }
+            .listRowBackground(theme.card)
 
             Section("内容标签") {
                 ForEach(tags, id: \.self) { tag in
@@ -44,9 +46,12 @@ struct ContentWarningPreferencesView: View {
                         .disabled(loading || savingTag != nil)
                     }
                     .padding(.vertical, 5)
+                    .listRowBackground(theme.card)
                 }
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(theme.canvas)
         .navigationTitle("内容警告偏好")
         .navigationBarTitleDisplayMode(.inline)
         .task(id: settings.contentMode) { await loadOfficialPreferences() }

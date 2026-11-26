@@ -30,6 +30,7 @@ struct ComicCard: View {
     let comic: Comic
     var progressLabel: String? = nil
     @EnvironmentObject private var library: LibraryStore
+    @Environment(\.komiicTheme) private var theme
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -55,7 +56,7 @@ struct ComicCard: View {
                 .font(.system(size: 10)).foregroundStyle(.secondary)
                 Divider()
                 HStack {
-                    Text(comic.displayStatus).foregroundStyle(KomiicTheme.accent)
+                    Text(comic.displayStatus).foregroundStyle(theme.accent)
                     Spacer(minLength: 2)
                     Text(comic.updatedSummary).lineLimit(1)
                 }
@@ -63,7 +64,7 @@ struct ComicCard: View {
             }
             .padding(9)
         }
-        .background(KomiicTheme.card, in: RoundedRectangle(cornerRadius: 12))
+        .background(theme.card, in: RoundedRectangle(cornerRadius: 12))
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(KomiicTheme.line, lineWidth: 0.5))
         .contentShape(Rectangle())
@@ -140,6 +141,7 @@ struct ComicContextMenu: View {
     let comic: Comic
     @EnvironmentObject private var library: LibraryStore
     var body: some View {
+        RemoveRecentReadingButton(comicID: comic.id)
         Button { library.toggleFavorite(comic) } label: {
             Label(library.isFavorite(comic) ? "取消喜爱" : "加入喜爱", systemImage: "heart")
         }
@@ -152,6 +154,19 @@ struct ComicContextMenu: View {
         }
         Button(role: .destructive) { library.toggleBlocked(comic) } label: {
             Label("屏蔽这部漫画", systemImage: "eye.slash")
+        }
+    }
+}
+
+struct RemoveRecentReadingButton: View {
+    let comicID: String
+    @EnvironmentObject private var library: LibraryStore
+
+    var body: some View {
+        if library.isInRecentReading(comicID: comicID) {
+            Button("从最近阅读里移除", systemImage: "minus.circle", role: .destructive) {
+                library.removeFromRecentReading(comicID: comicID)
+            }
         }
     }
 }

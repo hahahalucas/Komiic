@@ -22,12 +22,6 @@ struct ContentWarningPreference: Codable, Hashable, Sendable {
     var action: ContentWarningAction
 }
 
-struct ProfileCategoryCount: Codable, Identifiable, Sendable {
-    var id: String
-    var name: String
-    var count: Int
-}
-
 /// The website sends an empty string when it renders a text avatar.
 struct OfficialProfileImage: Decodable, Sendable {
     var url: URL?
@@ -72,7 +66,6 @@ struct AccountReadingStats: Codable, Sendable {
     let bookmarkCount: Int
     let folderCount: Int
     let followingFolderCount: Int
-    let topCategories: [ProfileCategoryCount]
 }
 
 struct ImageReadingQuota: Codable, Sendable {
@@ -108,7 +101,7 @@ extension KomiicAccountProfile {
         if let legacy = try? LegacyStatistics(from: decoder) {
             readingStats = AccountReadingStats(comicsRead: legacy.readComicCount, chaptersRead: legacy.readChapterCount,
                 favoriteCount: legacy.favoriteCount, bookmarkCount: legacy.bookmarkCount, folderCount: legacy.folderCount,
-                followingFolderCount: legacy.followedFolderCount, topCategories: legacy.topCategories)
+                followingFolderCount: legacy.followedFolderCount)
             imageQuota = ImageReadingQuota(usage: legacy.imageReadCount, limit: legacy.imageReadLimit, resetAt: legacy.resetAt)
             messageStats = AccountMessageStats(totalMessages: legacy.commentCount, totalUpvotes: legacy.commentLikes)
         }
@@ -126,7 +119,6 @@ extension KomiicAccountProfile {
         let bookmarkCount: Int
         let folderCount: Int
         let followedFolderCount: Int
-        let topCategories: [ProfileCategoryCount]
     }
 }
 

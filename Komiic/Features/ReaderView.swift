@@ -10,6 +10,7 @@ struct ReaderView: View {
     @EnvironmentObject private var library: LibraryStore
     @EnvironmentObject private var downloads: DownloadStore
     @EnvironmentObject private var settings: ReaderSettings
+    @Environment(\.komiicTheme) private var theme
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var pages: [ComicPage] = []
@@ -72,7 +73,10 @@ struct ReaderView: View {
                             .simultaneousGesture(endOfChapterGesture(atEnd: spreadLayout.next(from: currentPage) == spreadLayout.start(for: currentPage)))
                         }
                         if controls {
-                            readerControls(topInset: ReaderChromePlacement.topPadding(safeAreaTop: safeGeometry.safeAreaInsets.top)).padding(.bottom, geometry.safeAreaInsets.bottom)
+                            readerControls(topInset: ReaderChromePlacement.topPadding(
+                                safeAreaTop: safeGeometry.safeAreaInsets.top,
+                                isPhone: UIDevice.current.userInterfaceIdiom == .phone))
+                                .padding(.bottom, geometry.safeAreaInsets.bottom)
                         }
                     }
                 }
@@ -280,7 +284,7 @@ struct ReaderView: View {
                 Slider(value: Binding(get: { Double(currentPage) }, set: { move(to: Int($0.rounded())) }),
                        in: 0...Double(max(1, pages.count - 1)), step: 1)
                     .disabled(pages.count < 2)
-                    .tint(settings.einkMode.enabled ? .black : KomiicTheme.accent)
+                    .tint(settings.einkMode.enabled ? .black : theme.accent)
                     .accessibilityLabel("阅读页码")
                     .accessibilityValue("第 \(currentPage + 1) 页，共 \(pages.count) 页")
                 Text("\(pages.count)").monospacedDigit()

@@ -79,6 +79,7 @@ final class CommentListModel: ObservableObject {
 
 struct MyCommentsSection: View {
     let refresh: Int
+    @Environment(\.komiicTheme) private var theme
     @StateObject private var model: CommentListModel
 
     init(mode: ComicContentMode, refresh: Int) {
@@ -98,7 +99,7 @@ struct MyCommentsSection: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                             Image(systemName: "chevron.right").font(.caption.weight(.semibold))
                         }
-                        .foregroundStyle(KomiicTheme.accent)
+                        .foregroundStyle(theme.accent)
                         .padding(.horizontal, 4).padding(.vertical, 5)
                     }
                     CommentCard(comment: comment)
@@ -142,6 +143,7 @@ struct CommentCard: View {
     var voteDisabled = false
     var onReply: (() -> Void)? = nil
     var onVote: ((Bool) -> Void)? = nil
+    @Environment(\.komiicTheme) private var theme
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -196,7 +198,7 @@ struct CommentCard: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading).padding(9)
-        .background(KomiicTheme.softBlue, in: RoundedRectangle(cornerRadius: 10))
+        .background(theme.accentWash, in: RoundedRectangle(cornerRadius: 10))
     }
 
     private var actions: some View {
@@ -235,6 +237,6 @@ struct CommentCard: View {
             Image(systemName: selected ? "\(symbol).fill" : symbol)
             if count > 0 { Text(count.formatted()).monospacedDigit() }
         }
-        .foregroundStyle(selected ? KomiicTheme.accent : Color.secondary)
+        .foregroundStyle(selected ? theme.accent : Color.secondary)
     }
 }
