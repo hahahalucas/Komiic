@@ -1,5 +1,4 @@
-# Komiic for iOS 2.0
-
+# Komiic for iOS
 基于 Komiic 网站实现的原生 SwiftUI 漫画客户端，适用于 iOS / iPadOS 17 及以上系统。项目使用 Apple 系统框架，采用液态玻璃布局，无第三方运行时依赖。
 
 公开源码：[hahahalucas/Komiic](https://github.com/hahahalucas/Komiic)。
