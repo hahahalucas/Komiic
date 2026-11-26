@@ -90,7 +90,6 @@ final class AccountProfileModel: ObservableObject {
         cachedScope = sessionScope()
         self.fetchProfile = fetchProfile ?? { try await api.accountProfile() }
         statisticsAPI = fetchProfile == nil ? api : nil
-        connected = cachedScope != nil
         restore()
     }
 
@@ -203,7 +202,7 @@ final class AccountProfileModel: ObservableObject {
         let scope = sessionScope()
         guard scope != cachedScope else { return }
         generation = UUID(); request?.cancel(); request = nil
-        profile = nil; connected = scope != nil; loading = false; error = nil; hasLoaded = false
+        profile = nil; connected = false; loading = false; error = nil; hasLoaded = false
         quotaRefreshFailed = false
         cachedScope = scope
         restore()

@@ -1,6 +1,6 @@
 # Komiic for iOS 0.1.0
 
-基于 v3.0 升级的原生 SwiftUI 漫画客户端，当前版本 **0.1.0（build 10）**，支持 iPhone / iPad、iOS 17 及以上。使用 Apple 系统框架，无第三方运行时依赖。iOS 26 使用系统 Liquid Glass 导航及阅读控制条，旧系统保留兼容外观。
+基于 v3.0 升级的原生 SwiftUI 漫画客户端，当前版本 **0.1.0（build 11）**，支持 iPhone / iPad、iOS 17 及以上。使用 Apple 系统框架，无第三方运行时依赖。iOS 26 使用系统 Liquid Glass 导航及阅读控制条，旧系统保留兼容外观。
 
 ## 本次更新
 
@@ -103,6 +103,6 @@ Xcode 编译、XCTest、模拟器界面及真机验证需在 Mac 完成；本地
 bash scripts/build_ipa.sh --unsigned
 ```
 
-无签名 IPA 安装前需要使用自己的证书签名。本次 0.1.0 使用 build 10。
+无签名 IPA 安装前需要使用自己的证书签名。本次 0.1.0 使用 build 11。
 
 公开源码：[hahahalucas/Komiic](https://github.com/hahahalucas/Komiic)。本项目采用 [MIT 许可证](LICENSE)，为独立客户端，与 Komiic 官方无隶属关系。所用第一方内部接口可能随官网更新而改变。
