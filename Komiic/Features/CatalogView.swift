@@ -100,7 +100,7 @@ final class CatalogModel: ObservableObject {
 }
 
 // The first primary category contains both update pages; the pager visits all five.
-private enum CatalogPage: String, CaseIterable, Identifiable {
+enum CatalogPage: String, CaseIterable, Identifiable {
     case updated, newest, popular, recommended, history
 
     var id: String { rawValue }
@@ -117,10 +117,11 @@ private enum CatalogPage: String, CaseIterable, Identifiable {
 }
 
 struct CatalogView: View {
+    @Binding var page: CatalogPage
+    let active: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject private var settings: ReaderSettings
     @EnvironmentObject private var content: AppContentStore
-    @State private var page: CatalogPage = .updated
     @State private var filter: ContentFilter = .all
     @State private var showFilter = false
 
@@ -140,17 +141,19 @@ struct CatalogView: View {
             .padding(.horizontal, 12).padding(.vertical, 8)
 
             Divider().opacity(0.4)
-            if page != .history { pageControls }
+            // Keep the pager's height stable when the selected page changes.
+            pageControls
 
             // Native paging tracks the drag continuously and settles onto the next page.
             TabView(selection: $page) {
                 ForEach(CatalogPage.allCases) { item in
                     Group {
                         if let feed = item.feed {
-                            CatalogFeedPage(feed: feed, filter: filter, active: page == item,
+                            CatalogFeedPage(feed: feed, filter: filter, active: active && page == item,
                                             model: content.catalog(feed: feed, mode: settings.contentMode))
                         } else {
-                            HistoryView()
+                            HistoryView(filter: filter, active: active && page == item)
+                                .id(content.revision)
                         }
                     }
                     .tag(item)
@@ -173,7 +176,7 @@ struct CatalogView: View {
                     Text("最近上架").tag(CatalogPage.newest)
                 }
                 .pickerStyle(.segmented).frame(maxWidth: 230)
-            } else {
+            } else if page != .history {
                 Text(page == .popular ? "这个月，大家都在看" : "发现下一部好漫画")
                     .font(.subheadline).foregroundStyle(.secondary)
                     .lineLimit(1).minimumScaleFactor(0.8)
@@ -185,6 +188,7 @@ struct CatalogView: View {
             }
             .komiicActionStyle()
             .accessibilityLabel("筛选选项")
+            .accessibilityValue(filter.title)
         }
         .frame(minHeight: 44)
         .padding(.horizontal, 14).padding(.vertical, 6)
@@ -251,7 +255,7 @@ private struct FilterSheet: View {
         NavigationStack {
             Form {
                 Section("内容分级") {
-                    Picker("色气程度", selection: $draft) {
+                    Picker("色情程度", selection: $draft) {
                         ForEach(ContentFilter.allCases) { filter in
                             Text(filter.title).tag(filter)
                         }

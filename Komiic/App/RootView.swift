@@ -35,7 +35,10 @@ struct RootView: View {
     @EnvironmentObject private var downloads: DownloadStore
     @EnvironmentObject private var settings: ReaderSettings
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selected: AppTab = .home
+    @State private var catalogPage: CatalogPage = .updated
+    @State private var gridColumns = UIDevice.current.userInterfaceIdiom == .pad ? 5 : 3
     @State private var paths: [AppTab: NavigationPath] = [:]
     @State private var librarySection: LibrarySection = .shelves
     @State private var searchPrompt = false
@@ -43,6 +46,7 @@ struct RootView: View {
     @State private var started = false
 
     var body: some View {
+        let isPad = UIDevice.current.userInterfaceIdiom == .pad
         Group {
             if #available(iOS 26.0, *) {
                 modernTabs.tabBarMinimizeBehavior(.onScrollDown)
@@ -52,6 +56,12 @@ struct RootView: View {
                 classicTabs
             }
         }
+        .environment(\.comicGridColumns, gridColumns)
+        .onGeometryChange(for: Int.self) { geometry in
+            let height = geometry.size.height + geometry.safeAreaInsets.top + geometry.safeAreaInsets.bottom
+            let viewport = CGSize(width: geometry.size.width, height: height)
+            return ComicGridColumns.count(for: viewport, isPad: isPad)
+        } action: { gridColumns = $0 }
         .accessibilityHidden(searchPrompt)
         .overlay {
             if searchPrompt {
@@ -68,6 +78,7 @@ struct RootView: View {
             library.selectMode(mode)
             paths = [:]
             selected = .home
+            catalogPage = .updated
             searchPrompt = false
         }
         .task { seenCompleted = completedIDs; started = true }
@@ -131,8 +142,9 @@ struct RootView: View {
     }
 
     private func screen(_ tab: AppTab) -> some View {
-        TabRootScreen(tab: tab, isSelected: selected == tab, librarySection: $librarySection,
+        TabRootScreen(tab: tab, isSelected: selected == tab, catalogPage: $catalogPage, librarySection: $librarySection,
                       path: Binding(get: { paths[tab] ?? NavigationPath() }, set: { paths[tab] = $0 }),
+                      swipeTargets: swipeTargets(for: tab), selectBySwipe: selectBySwipe,
                       openSearchResult: { comic in
                           paths[tab] = NavigationPath()
                           var homePath = NavigationPath()
@@ -145,13 +157,31 @@ struct RootView: View {
                       openShelves: { paths[.library] = NavigationPath(); librarySection = .shelves; selected = .library },
                       showSearch: { searchPrompt = true })
     }
+
+    private func swipeTargets(for tab: AppTab) -> TabSwipeTargets {
+        guard tab == selected, !searchPrompt, paths[tab]?.isEmpty != false else { return TabSwipeTargets() }
+        switch tab {
+        case .home: return TabSwipeTargets(next: catalogPage == .history ? .favorites : nil)
+        case .favorites: return TabSwipeTargets(previous: .home, next: .library)
+        case .library: return TabSwipeTargets(previous: .favorites, next: .account)
+        case .account: return TabSwipeTargets(previous: .library)
+        }
+    }
+
+    private func selectBySwipe(_ tab: AppTab) {
+        if tab == .home { catalogPage = .history }
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.25)) { selected = tab }
+    }
 }
 
 private struct TabRootScreen: View {
     let tab: AppTab
     let isSelected: Bool
+    @Binding var catalogPage: CatalogPage
     @Binding var librarySection: LibrarySection
     @Binding var path: NavigationPath
+    let swipeTargets: TabSwipeTargets
+    let selectBySwipe: (AppTab) -> Void
     let openSearchResult: (Comic) -> Void
     let openFavorites: () -> Void
     let openBookmarks: () -> Void
@@ -167,6 +197,7 @@ private struct TabRootScreen: View {
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(theme.canvas)
+                .modifier(TabSwipeModifier(targets: swipeTargets, select: selectBySwipe))
                 .navigationTitle(settings.contentMode == .adult ? "H 漫画 · \(tab.title)" : tab.title)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
@@ -212,7 +243,7 @@ private struct TabRootScreen: View {
 
     @ViewBuilder private var content: some View {
         switch tab {
-        case .home: CatalogView()
+        case .home: CatalogView(page: $catalogPage, active: isSelected && path.isEmpty)
         case .favorites: FavoritesView()
         case .account: AccountView(onOpenFavorites: openFavorites, onOpenBookmarks: openBookmarks,
                                   onOpenShelves: openShelves, isVisible: isSelected && path.isEmpty)

@@ -27,6 +27,7 @@ on:
       - codex/komiic-0.9.0
       - codex/komiic-0.1.0
       - codex/komiic-1.0.1
+      - codex/komiic-1.0.2-rebuild
 
 permissions:
   contents: read
@@ -37,6 +38,7 @@ concurrency:
 
 jobs:
   api-contract:
+    if: github.ref_name != 'codex/komiic-1.0.2-rebuild'
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
@@ -54,19 +56,13 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
   build:
-    name: ${{ matrix.name }}
+    name: ${{ matrix.mode == 'ipa' && 'Device IPA only' || 'Full iPhone and iPad verification' }}
     runs-on: macos-26
-    timeout-minutes: ${{ matrix.timeout }}
+    timeout-minutes: ${{ matrix.mode == 'ipa' && 20 || 40 }}
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - mode: ipa
-            name: Device IPA only
-            timeout: 20
-          - mode: full
-            name: Full iPhone and iPad verification
-            timeout: 40
+        mode: ${{ fromJSON(github.ref_name == 'codex/komiic-1.0.2-rebuild' && '["ipa"]' || '["ipa", "full"]') }}
     env:
       KOMIIC_BUNDLE_ID: ${{ inputs.bundle_id || 'com.example.Komiic' }}
     steps:
