@@ -6,6 +6,7 @@ enum AppTab: String, CaseIterable, Identifiable {
     case home, favorites, library, account
 
     var id: String { rawValue }
+    var index: Int { Self.allCases.firstIndex(of: self) ?? 0 }
     var title: String {
         switch self {
         case .home: return "首页"
@@ -31,17 +32,18 @@ private enum MenuRoute: Hashable { case blocked, warnings }
 struct RootView: View {
     private let headerHeight: CGFloat = 58
     private let actionHeight: CGFloat = 48
+    private let phoneTabPadding: CGFloat = 6
 
     @EnvironmentObject private var content: AppContentStore
     @EnvironmentObject private var library: LibraryStore
     @EnvironmentObject private var downloads: DownloadStore
-    @EnvironmentObject private var imageSources: ImageSourceStore
     @EnvironmentObject private var settings: ReaderSettings
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.komiicTheme) private var theme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ScaledMetric(relativeTo: .headline) private var actionIconSize: CGFloat = 21
-    @State private var selected: AppTab = .home
+    @SceneStorage("reader.position.v1") private var readerPositionData: Data?
+    @State private var activePage: AppPage = .catalog(.all)
     @State private var catalogPage: CatalogPage = .all
     @State private var scrollPage: AppPage? = .catalog(.all)
     @State private var pagerPosition = AppPagerPosition()
@@ -52,30 +54,36 @@ struct RootView: View {
     @State private var showingPalette = false
     @State private var seenCompleted: Set<String> = []
     @State private var started = false
+    @State private var reader: ReaderLaunch?
+    @State private var readerDismissal: (() -> Void)?
+
+    private var selected: AppTab { activePage.tab }
+    private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
 
     var body: some View {
         GeometryReader { geometry in
             let insets = geometry.safeAreaInsets
             let size = CGSize(width: geometry.size.width + insets.leading + insets.trailing,
                               height: geometry.size.height + insets.top + insets.bottom)
-            let isPad = UIDevice.current.userInterfaceIdiom == .pad
             let landscape = isPad && size.width > size.height
-            SystemTabs(selected: selected, hideTopScrollEdge: landscape, select: selectSystemTab) {
-                nativeContent(landscape: landscape, statusTop: insets.top)
-                    .environmentObject(content)
-                    .environmentObject(library)
-                    .environmentObject(downloads)
-                    .environmentObject(imageSources)
-                    .environmentObject(settings)
-                    .environment(\.scenePhase, scenePhase)
-                    .environment(\.komiicTheme, theme)
-                    .environment(\.comicGridColumns, ComicGridColumns.count(for: size, isPad: isPad))
-                    .tint(theme.accent)
-            }
-            .ignoresSafeArea(.container)
+            let wideHeader = landscape && geometry.size.width >= 620
+            let bottomInset = isPad ? 0 : AppTabBar.phoneHeight + phoneTabPadding
+            navigation(landscape: landscape, wideHeader: wideHeader, bottomInset: bottomInset)
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    if isPad { tabletTabBar(showActions: wideHeader && isAtRoot) }
+                }
+                .overlay(alignment: .bottom) {
+                    if !isPad {
+                        AppTabBar(selected: selected, position: pagerPosition, isPad: false, select: selectTab)
+                            .padding(.horizontal, 16)
+                            .padding(.bottom, phoneTabPadding)
+                    }
+                }
+                .environment(\.comicGridColumns, ComicGridColumns.count(for: size, isPad: isPad))
+                .id(settings.contentMode)
         }
         .ignoresSafeArea(.keyboard)
-        .id(settings.contentMode)
+        .background(theme.canvas.ignoresSafeArea())
         .accessibilityHidden(searchPrompt)
         .overlay {
             if searchPrompt {
@@ -86,10 +94,17 @@ struct RootView: View {
             }
         }
         .sheet(isPresented: $showingPalette) { ThemePaletteView() }
+        .fullScreenCover(item: $reader, onDismiss: readerDidDismiss) { launch in
+            ReaderView(comic: launch.comic, chapter: launch.chapter, initialPage: launch.page,
+                       chapterDirectory: launch.chapterDirectory,
+                       onClose: { finished in closeReader(launch, finished: finished) },
+                       onPositionChange: { chapter, page in saveReaderPosition(launch, chapter: chapter, page: page) })
+                .interactiveDismissDisabled()
+        }
         .onChange(of: settings.contentMode) { _, mode in
             library.selectMode(mode)
             paths = [:]
-            selected = .home
+            activePage = .catalog(.all)
             catalogPage = .all
             scrollPage = .catalog(.all)
             pagerPosition = AppPagerPosition()
@@ -112,15 +127,18 @@ struct RootView: View {
                 UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: "download-\(id)", content: content, trigger: nil)) { _ in }
             }
         }
-        .onChange(of: scenePhase) { _, phase in
+        .onChange(of: scenePhase, initial: true) { previous, phase in
             if phase == .background {
                 content.flushSnapshots()
                 library.flushSnapshots()
                 SessionCookieStore.shared.capture()
             }
             if phase == .active {
-                Task { await library.retryPendingOfficialChanges() }
-                downloads.applyCachePolicy(settings.cachePolicy)
+                restoreReaderIfNeeded()
+                if previous != .active {
+                    Task { await library.retryPendingOfficialChanges() }
+                    downloads.applyCachePolicy(settings.cachePolicy)
+                }
             }
         }
     }
@@ -143,24 +161,19 @@ struct RootView: View {
 
     private var isAtRoot: Bool { path.wrappedValue.isEmpty }
 
-    @ViewBuilder private func nativeContent(landscape: Bool, statusTop: CGFloat) -> some View {
-        if #available(iOS 26.0, *) {
-            GeometryReader { safe in
-                GeometryReader { expanded in
-                    let inset = max(0, expanded.frame(in: .global).maxY - safe.frame(in: .global).maxY)
-                    navigation(landscape: landscape, statusTop: statusTop, bottomInset: inset)
-                }
-                .ignoresSafeArea(.container, edges: .bottom)
+    private func tabletTabBar(showActions: Bool) -> some View {
+        AppTabBar(selected: selected, position: pagerPosition, isPad: true, select: selectTab)
+            .padding(.horizontal, showActions ? 116 : 12)
+            .padding(.vertical, 4)
+            .frame(maxWidth: .infinity)
+            .overlay(alignment: .trailing) {
+                if showActions { topActions(clear: true).padding(.trailing, 12) }
             }
-        } else {
-            navigation(landscape: landscape, statusTop: statusTop, bottomInset: 0)
-                .toolbarBackground(.hidden, for: .tabBar)
-        }
     }
 
-    private func navigation(landscape: Bool, statusTop: CGFloat, bottomInset: CGFloat) -> some View {
+    private func navigation(landscape: Bool, wideHeader: Bool, bottomInset: CGFloat) -> some View {
         NavigationStack(path: path) {
-            rootPages(landscape: landscape, statusTop: statusTop, bottomInset: bottomInset)
+            rootPages(wideHeader: wideHeader, bottomInset: bottomInset)
                 .background(theme.canvas)
                 .toolbar(isAtRoot ? .hidden : .automatic, for: .navigationBar)
                 .navigationDestination(for: Comic.self) { comic in
@@ -186,58 +199,30 @@ struct RootView: View {
         .komiicScrollEdgeHidden(true, for: .bottom)
         .environment(\.openAuthor) { navigate(to: $0) }
         .environment(\.openComicDirectory) { navigate(to: $0) }
+        .environment(\.openReader) { presentReader($0) }
     }
 
-    @ViewBuilder private func rootPages(landscape: Bool, statusTop: CGFloat, bottomInset: CGFloat) -> some View {
-        if landscape {
-            GeometryReader { safe in
-                GeometryReader { expanded in
-                    let safeTop = max(0, safe.frame(in: .global).minY - expanded.frame(in: .global).minY)
-                    let actionsTop = statusTop + max(0, (safeTop - statusTop - actionHeight) / 2)
-                    let contentTop = max(safeTop, actionsTop + actionHeight + 4)
-                    pager(headerInset: contentTop, landscape: true, bottomInset: bottomInset)
-                        .overlay(alignment: .topLeading) {
-                            if selected == .home, !catalogSelection.isCollapsed(catalogPage) {
-                                catalogSelector(collapsed: false)
-                                    .frame(maxWidth: 360)
-                                    .padding(.horizontal, 12)
-                                    .padding(.top, contentTop)
-                            }
-                        }
-                        .overlay(alignment: .topTrailing) {
-                            topActions(clear: true)
-                                .padding(.trailing, 12)
-                                .padding(.top, actionsTop)
-                        }
-                }
-                .ignoresSafeArea(.container, edges: .top)
-            }
-        } else {
-            pager(headerInset: headerHeight, landscape: false, bottomInset: bottomInset)
-                .overlay(alignment: .top) { regularHeader }
-        }
-    }
-
-    private func pager(headerInset: CGFloat, landscape: Bool, bottomInset: CGFloat) -> some View {
+    private func rootPages(wideHeader: Bool, bottomInset: CGFloat) -> some View {
         SlidingTabs(scrollPage: $scrollPage, position: pagerPosition, didSettle: didSettle) { page in
-            screen(page, headerInset: headerInset, landscape: landscape, bottomInset: bottomInset)
+            let headerInset: CGFloat = wideHeader ? (page.tab == .home ? 44 : 0) : headerHeight
+            screen(page, headerInset: headerInset, bottomInset: bottomInset)
+                .accessibilityHidden(activePage != page)
+        }
+        .overlay(alignment: .top) {
+            header(wide: wideHeader)
         }
         .overlay(alignment: .bottomTrailing) {
-            if selected == .home {
-                CatalogFilterButton(selection: catalogSelection)
-                    .padding(.trailing, CatalogFilterButton.inset)
-                    .padding(.bottom, CatalogFilterButton.inset + bottomInset)
-            }
+            PagerFilterButton(selection: catalogSelection, position: pagerPosition)
+                .padding(.trailing, CatalogFilterButton.inset)
+                .padding(.bottom, CatalogFilterButton.inset + bottomInset)
         }
     }
 
-    @ViewBuilder private func screen(_ page: AppPage, headerInset: CGFloat, landscape: Bool,
-                                     bottomInset: CGFloat) -> some View {
-        let visible = selected == page.tab && isAtRoot
+    @ViewBuilder private func screen(_ page: AppPage, headerInset: CGFloat, bottomInset: CGFloat) -> some View {
+        let visible = activePage == page && isAtRoot && reader == nil
         switch page {
         case .catalog(let item):
-            CatalogPageContent(page: item, active: visible && catalogPage == item,
-                               headerInset: headerInset + (landscape ? 44 : 0),
+            CatalogPageContent(page: item, active: visible, headerInset: headerInset,
                                bottomInset: bottomInset, selection: catalogSelection)
         case .favorites:
             FavoritesView()
@@ -265,44 +250,25 @@ struct RootView: View {
         }
     }
 
-    private var regularHeader: some View {
-        let collapsed = catalogSelection.isCollapsed(catalogPage)
-        return ZStack {
-            if selected != .home {
-                Text(settings.contentMode == .adult ? "H 漫画 · \(selected.title)" : selected.title)
-                    .font(.tabHeader).lineLimit(1).minimumScaleFactor(0.7)
-                    .accessibilityAddTraits(.isHeader)
-            } else if collapsed {
-                catalogSelector(collapsed: true)
+    private func header(wide: Bool) -> some View {
+        PagerHeader(catalogPage: catalogPage, position: pagerPosition, selection: catalogSelection,
+                    wide: wide, adult: settings.contentMode == .adult, select: { move(to: .catalog($0)) })
+            .padding(.horizontal, 12)
+            .frame(height: wide ? 44 : headerHeight)
+            .overlay(alignment: .trailing) {
+                if !wide { topActions(clear: false).padding(.trailing, 12) }
             }
-            HStack(spacing: 8) {
-                if selected == .home && !collapsed {
-                    catalogSelector(collapsed: false)
-                        .frame(maxWidth: 360)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                } else {
-                    Spacer(minLength: 0)
+            .background {
+                if !wide {
+                    Rectangle().fill(.regularMaterial)
+                        .mask(alignment: .top) {
+                            LinearGradient(stops: [.init(color: .black, location: 0.78), .init(color: .clear, location: 1)],
+                                           startPoint: .top, endPoint: .bottom)
+                        }
+                        .ignoresSafeArea(.container, edges: .top)
+                        .allowsHitTesting(false)
                 }
-                topActions(clear: false)
             }
-        }
-        .padding(.horizontal, 12)
-        .frame(height: headerHeight)
-        .background {
-            Rectangle().fill(.regularMaterial)
-                .mask(alignment: .top) {
-                    LinearGradient(stops: [.init(color: .black, location: 0.78), .init(color: .clear, location: 1)],
-                                   startPoint: .top, endPoint: .bottom)
-                }
-                .ignoresSafeArea(.container, edges: .top)
-                .allowsHitTesting(false)
-        }
-        .animation(reduceMotion ? nil : .easeInOut(duration: 0.16), value: collapsed)
-    }
-
-    private func catalogSelector(collapsed: Bool) -> some View {
-        CatalogPageSelector(page: catalogPage, position: pagerPosition, selection: catalogSelection,
-                            collapsed: collapsed, select: { move(to: .catalog($0)) })
     }
 
     @ViewBuilder private func topActions(clear: Bool) -> some View {
@@ -331,8 +297,8 @@ struct RootView: View {
         Menu {
             Button { showingPalette = true } label: { Label("调色盘", systemImage: "paintpalette") }
             Divider()
-            NavigationLink(value: MenuRoute.blocked) { Label("屏蔽漫画", systemImage: "eye.slash") }
-            NavigationLink(value: MenuRoute.warnings) { Label("内容警告偏好", systemImage: "shield") }
+            Button { navigate(to: MenuRoute.blocked) } label: { Label("屏蔽漫画", systemImage: "eye.slash") }
+            Button { navigate(to: MenuRoute.warnings) } label: { Label("内容警告偏好", systemImage: "shield") }
             Divider()
             Button {
                 let mode: ComicContentMode = settings.contentMode == .general ? .adult : .general
@@ -354,27 +320,37 @@ struct RootView: View {
     }
 
     private func didSettle(_ page: AppPage) {
-        guard isAtRoot else { return }
-        if case .catalog(let item) = page, catalogPage != item { catalogPage = item }
-        if selected != page.tab { selected = page.tab }
+        guard isAtRoot, reader == nil, scenePhase == .active, page != activePage else { return }
+        activate(page)
     }
 
     private func move(to page: AppPage) {
-        guard scrollPage != page else { return }
-        let nearby = abs(CGFloat(page.index) - pagerPosition.progress) <= 1.1
-        withAnimation(!reduceMotion && nearby ? .easeInOut(duration: 0.28) : nil) {
-            scrollPage = page
+        guard page != activePage || scrollPage != page else { return }
+        if reduceMotion || !isAtRoot || paths[page.tab]?.isEmpty == false {
+            jump(to: page)
+        } else {
+            withAnimation(.easeInOut(duration: 0.3)) { scrollPage = page }
         }
     }
 
-    private func selectSystemTab(_ tab: AppTab) {
-        guard tab != selected else { return }
+    private func activate(_ page: AppPage) {
+        if case .catalog(let item) = page { catalogPage = item }
+        activePage = page
+    }
+
+    private func jump(to page: AppPage) {
         var transaction = Transaction(animation: nil)
         transaction.disablesAnimations = true
         withTransaction(transaction) {
-            scrollPage = page(for: tab)
-            selected = tab
+            scrollPage = page
+            pagerPosition.progress = CGFloat(page.index)
+            activate(page)
         }
+    }
+
+    private func selectTab(_ tab: AppTab) {
+        guard tab != selected else { return }
+        move(to: page(for: tab))
     }
 
     private func page(for tab: AppTab) -> AppPage {
@@ -399,10 +375,102 @@ struct RootView: View {
 
     private func openSearchResult(_ comic: Comic) {
         paths[selected] = NavigationPath()
-        scrollPage = .catalog(catalogPage)
-        selected = .home
+        jump(to: .catalog(catalogPage))
         var homePath = NavigationPath()
         homePath.append(comic)
         paths[.home] = homePath
+    }
+
+    private func presentReader(_ launch: ReaderLaunch) {
+        guard reader == nil, readerDismissal == nil else { return }
+        reader = launch
+        saveReaderPosition(launch, chapter: launch.chapter, page: launch.page)
+    }
+
+    private func saveReaderPosition(_ launch: ReaderLaunch, chapter: Chapter, page: Int) {
+        guard isPad, reader?.id == launch.id else { return }
+        let position = ReaderPosition(mode: settings.contentMode, comic: launch.comic, chapter: chapter, page: page)
+        if let data = try? JSONEncoder().encode(position) { readerPositionData = data }
+    }
+
+    private func restoreReaderIfNeeded() {
+        guard isPad, reader == nil, readerDismissal == nil, let data = readerPositionData else { return }
+        guard let position = try? JSONDecoder().decode(ReaderPosition.self, from: data),
+              position.mode == settings.contentMode else {
+            readerPositionData = nil
+            return
+        }
+        if selected == .home, isAtRoot { navigate(to: position.comic) }
+        reader = ReaderLaunch(comic: position.comic, chapter: position.chapter, page: position.page)
+    }
+
+    private func closeReader(_ launch: ReaderLaunch, finished: Bool) {
+        guard reader?.id == launch.id else { return }
+        readerPositionData = nil
+        readerDismissal = { launch.onDismiss?(finished) }
+        reader = nil
+    }
+
+    private func readerDidDismiss() {
+        let dismissal = readerDismissal
+        readerDismissal = nil
+        dismissal?()
+        if scenePhase == .active { restoreReaderIfNeeded() }
+    }
+}
+
+private struct PagerHeader: View {
+    let catalogPage: CatalogPage
+    let position: AppPagerPosition
+    let selection: CatalogSelection
+    let wide: Bool
+    let adult: Bool
+    let select: (CatalogPage) -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        let collapsed = selection.isCollapsed(catalogPage)
+        let homeOpacity = position.homeOpacity
+        ZStack {
+            if !wide {
+                ForEach(AppTab.allCases.dropFirst()) { tab in
+                    let opacity = position.opacity(for: tab)
+                    Text(adult ? "H 漫画 · \(tab.title)" : tab.title)
+                        .font(.tabHeader).lineLimit(1).minimumScaleFactor(0.7)
+                        .padding(.horizontal, 90)
+                        .opacity(opacity)
+                        .animation(nil, value: position.progress)
+                        .accessibilityAddTraits(.isHeader)
+                        .accessibilityHidden(opacity < 0.5)
+                }
+            }
+            if !wide || !collapsed {
+                CatalogPageSelector(page: catalogPage, position: position, selection: selection,
+                                    collapsed: collapsed, select: select)
+                    .frame(maxWidth: collapsed ? nil : 360)
+                    .frame(maxWidth: .infinity, alignment: collapsed ? .center : .leading)
+                    .padding(.trailing, wide || collapsed ? 0 : 108)
+                    .opacity(homeOpacity)
+                    .animation(nil, value: position.progress)
+                    .allowsHitTesting(homeOpacity > 0.5)
+                    .accessibilityHidden(homeOpacity <= 0.5)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.16), value: collapsed)
+    }
+}
+
+private struct PagerFilterButton: View {
+    let selection: CatalogSelection
+    let position: AppPagerPosition
+
+    var body: some View {
+        let opacity = position.homeOpacity
+        CatalogFilterButton(selection: selection)
+            .opacity(opacity)
+            .animation(nil, value: position.progress)
+            .allowsHitTesting(opacity > 0.5)
+            .accessibilityHidden(opacity <= 0.5)
     }
 }

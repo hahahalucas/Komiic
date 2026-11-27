@@ -2,9 +2,9 @@ import SwiftUI
 
 struct OfflineView: View {
     @Environment(\.openComicDirectory) private var openComicDirectory
+    @Environment(\.openReader) private var openReader
     @Environment(\.komiicTheme) private var theme
     @EnvironmentObject private var downloads: DownloadStore
-    @State private var launch: ReaderLaunch?
     @State private var deleting: String?
     var body: some View {
         ScrollView {
@@ -50,15 +50,14 @@ struct OfflineView: View {
                                 .font(.caption2).foregroundStyle(.secondary)
                             Spacer()
                             Button(item.status == .completed ? "离线阅读" : "开始阅读") {
-                                launch = ReaderLaunch(comic: item.comic, chapter: item.chapter)
+                                openReader(ReaderLaunch(comic: item.comic, chapter: item.chapter, onDismiss: { finished in
+                                    if finished { openComicDirectory(item.comic) }
+                                }))
                             }.font(.caption.bold()).buttonStyle(.bordered)
                         }
                     }.padding(15).komiicCard()
                 }
             }.padding(16)
-        }
-        .fullScreenCover(item: $launch) { item in
-            ReaderView(comic: item.comic, chapter: item.chapter, initialPage: item.page, onReturnToDirectory: openComicDirectory)
         }
         .confirmationDialog("删除已下载的章节？", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), titleVisibility: .visible) {
             Button("删除下载", role: .destructive) { if let deleting { downloads.remove(id: deleting) }; deleting = nil }

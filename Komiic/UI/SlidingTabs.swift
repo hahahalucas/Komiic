@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 
 enum AppPage: Hashable {
     case catalog(CatalogPage)
@@ -22,6 +21,14 @@ enum AppPage: Hashable {
 @Observable
 final class AppPagerPosition {
     var progress: CGFloat = 0
+
+    var catalogProgress: CGFloat { min(progress, CGFloat(CatalogPage.allCases.count - 1)) }
+    var tabProgress: CGFloat { progress - catalogProgress }
+    var homeOpacity: Double { opacity(for: .home) }
+
+    func opacity(for tab: AppTab) -> Double {
+        max(0, 1 - Double(abs(tabProgress - CGFloat(tab.index))))
+    }
 }
 
 struct SlidingTabs<Screen: View>: View {
@@ -78,13 +85,8 @@ struct SlidingTabs<Screen: View>: View {
         .scrollIndicators(.hidden, axes: .horizontal)
         .contentMargins(.horizontal, 0, for: .scrollContent)
         .contentMargins(.bottom, 0, for: .scrollContent)
-        .scrollTargetBehavior(.viewAligned(limitBehavior: pageLimit))
+        .scrollTargetBehavior(.paging)
         .scrollPosition(id: $scrollPage, anchor: .center)
-    }
-
-    private var pageLimit: ViewAlignedScrollTargetBehavior.LimitBehavior {
-        if #available(iOS 26.0, *) { return .alwaysByOne }
-        return .always
     }
 
     private func reportSettledPage() {
@@ -97,106 +99,70 @@ struct SlidingTabs<Screen: View>: View {
     private enum PagerSpace { case pages }
 }
 
-struct SystemTabs<Content: View>: UIViewControllerRepresentable {
+struct AppTabBar: View {
+    static let phoneHeight: CGFloat = 56
+
     let selected: AppTab
-    let hideTopScrollEdge: Bool
+    let position: AppPagerPosition
+    let isPad: Bool
     let select: (AppTab) -> Void
-    @ViewBuilder let content: () -> Content
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.layoutDirection) private var layoutDirection
+    @Environment(\.komiicTheme) private var theme
 
-    func makeUIViewController(context: Context) -> SystemTabsController {
-        SystemTabsController(host: UIHostingController(rootView: content()))
+    var body: some View {
+        surface
+            .frame(maxWidth: isPad ? 420 : 480)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("主标签页")
     }
 
-    func updateUIViewController(_ controller: SystemTabsController, context: Context) {
-        (controller.host as? UIHostingController<Content>)?.rootView = content()
-        controller.didSelectTab = select
-        controller.hideTopScrollEdge = hideTopScrollEdge
-        controller.loadViewIfNeeded()
-        controller.view.tintColor = UIColor(context.environment.komiicTheme.accent)
-        controller.view.backgroundColor = UIColor(context.environment.komiicTheme.canvas)
-        controller.show(selected)
-    }
-}
-
-@MainActor
-final class SystemTabsController: UITabBarController, UITabBarControllerDelegate {
-    let host: UIViewController
-    var didSelectTab: (AppTab) -> Void = { _ in }
-    var hideTopScrollEdge = false {
-        didSet {
-            guard hideTopScrollEdge != oldValue else { return }
-            slots.forEach { $0.hideTopScrollEdge = hideTopScrollEdge }
+    @ViewBuilder private var surface: some View {
+        if reduceTransparency {
+            buttons.background(theme.card, in: Capsule())
+        } else if #available(iOS 26.0, *) {
+            let glass: Glass = isPad ? .regular : .clear
+            buttons.glassEffect(glass.interactive(), in: Capsule())
+        } else {
+            buttons.background(.ultraThinMaterial, in: Capsule())
         }
     }
-    private let slots = AppTab.allCases.map { tab in
-        let slot = SystemTabSlot()
-        slot.tabBarItem = UITabBarItem(title: tab.title, image: UIImage(systemName: tab.symbol), tag: 0)
-        return slot
-    }
 
-    init(host: UIViewController) {
-        self.host = host
-        super.init(nibName: nil, bundle: nil)
-    }
-
-    required init?(coder: NSCoder) { fatalError("Use init(host:)") }
-
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        if #available(iOS 18.0, *) { mode = .tabBar }
-        if #available(iOS 26.0, *) { tabBarMinimizeBehavior = .onScrollDown }
-        setViewControllers(slots, animated: false)
-        delegate = self
-        mountContent()
-    }
-
-    override func viewDidLayoutSubviews() {
-        super.viewDidLayoutSubviews()
-        mountContent()
-    }
-
-    override func contentScrollView(for edge: NSDirectionalRectEdge) -> UIScrollView? {
-        if hideTopScrollEdge && edge == .top { return nil }
-        return super.contentScrollView(for: edge)
-    }
-
-    func show(_ tab: AppTab) {
-        guard let index = AppTab.allCases.firstIndex(of: tab), index != selectedIndex else { return }
-        // The shared scroll view has already committed its page.
-        selectedIndex = index
-        mountContent()
-    }
-
-    func tabBarController(_ tabBarController: UITabBarController, didSelect viewController: UIViewController) {
-        guard let index = slots.firstIndex(where: { $0 === viewController }) else { return }
-        mountContent()
-        didSelectTab(AppTab.allCases[index])
-    }
-
-    private func mountContent() {
-        guard let slot = selectedViewController as? SystemTabSlot, host.parent !== slot else { return }
-        // The same hosting controller keeps the pager and navigation alive across tab selections.
-        UIView.performWithoutAnimation {
-            if host.parent != nil {
-                host.willMove(toParent: nil)
-                host.view.removeFromSuperview()
-                host.removeFromParent()
+    private var buttons: some View {
+        let layout = isPad ? AnyLayout(HStackLayout(spacing: 6)) : AnyLayout(VStackLayout(spacing: 3))
+        let highlightedIndex = Int(position.tabProgress.rounded())
+        return HStack(spacing: 0) {
+            ForEach(AppTab.allCases) { tab in
+                Button { select(tab) } label: {
+                    layout {
+                        Image(systemName: tab.symbol).font(.system(size: isPad ? 16 : 20, weight: .medium))
+                        Text(tab.title).font((isPad ? Font.subheadline : .caption2).weight(.medium))
+                            .lineLimit(1).minimumScaleFactor(0.75)
+                    }
+                    .foregroundStyle(tab.index == highlightedIndex ? theme.accent : Color.primary)
+                    .frame(maxWidth: .infinity, minHeight: isPad ? 44 : Self.phoneHeight - 8)
+                    .contentShape(Rectangle())
+                }
+                .accessibilityAddTraits(selected == tab ? [.isSelected] : [])
             }
-            slot.addChild(host)
-            host.view.frame = slot.view.bounds
-            host.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-            slot.view.addSubview(host.view)
-            host.didMove(toParent: slot)
         }
+        .buttonStyle(.plain)
+        .background { indicator }
+        .padding(4)
     }
-}
 
-private final class SystemTabSlot: UIViewController {
-    var hideTopScrollEdge = false
-
-    override func contentScrollView(for edge: NSDirectionalRectEdge) -> UIScrollView? {
-        if hideTopScrollEdge && edge == .top { return nil }
-        return children.first?.contentScrollView(for: edge) ?? super.contentScrollView(for: edge)
+    private var indicator: some View {
+        GeometryReader { geometry in
+            let width = geometry.size.width / CGFloat(AppTab.allCases.count)
+            let direction: CGFloat = layoutDirection == .rightToLeft ? -1 : 1
+            Capsule().fill(theme.accent.opacity(0.18))
+                .frame(width: width, height: geometry.size.height)
+                .offset(x: position.tabProgress * width * direction)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .animation(nil, value: position.progress)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }
 

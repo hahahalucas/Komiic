@@ -6,12 +6,13 @@ struct ReaderView: View {
     let chapter: Chapter
     var initialPage = 0
     var chapterDirectory: [Chapter] = []
-    var onReturnToDirectory: ((Comic) -> Void)? = nil
+    let onClose: (Bool) -> Void
+    let onPositionChange: (Chapter, Int) -> Void
     @EnvironmentObject private var library: LibraryStore
     @EnvironmentObject private var downloads: DownloadStore
     @EnvironmentObject private var settings: ReaderSettings
     @Environment(\.komiicTheme) private var theme
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.layoutDirection) private var layoutDirection
     @AppStorage("reader.iPadLandscapeSizing") private var ipadLandscapeSizing = ReaderLandscapeSizing.original
@@ -63,11 +64,11 @@ struct ReaderView: View {
                         VStack(spacing: 18) {
                             EmptyState(symbol: "wifi.exclamationmark", title: "暂时无法阅读", message: error,
                                        actionTitle: "重试", action: { retry += 1 })
-                            Button("返回") { dismiss() }
+                            Button("返回") { onClose(false) }
                         }.foregroundStyle(foreground)
                     } else if pages.isEmpty {
                         EmptyState(symbol: "doc", title: "本章暂无页面", message: "可以稍后重试，或在官网查看。",
-                                   actionTitle: "返回", action: { dismiss() }).foregroundStyle(foreground)
+                                   actionTitle: "返回", action: { onClose(false) }).foregroundStyle(foreground)
                     } else {
                         Group {
                             if layout.doublePage {
@@ -102,6 +103,7 @@ struct ReaderView: View {
             .ignoresSafeArea()
         }
         .statusBarHidden(true)
+        .accessibilityAction(.escape) { onClose(false) }
         .task(id: "\(currentChapter.id):\(retry)") {
             if readingContentMode == nil { readingContentMode = settings.contentMode }
             await loadPages()
@@ -118,6 +120,9 @@ struct ReaderView: View {
             if settings.cachePolicy == .afterReading { downloads.clearCache(chapterID: currentChapter.id) }
         }
         .onChange(of: settings.readingDirection) { _, _ in resetZoom() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active { chapterAdvance?.cancel() }
+        }
     }
 
     private func landscapeViewport(safe: GeometryProxy, expanded: GeometryProxy) -> CGRect? {
@@ -149,7 +154,7 @@ struct ReaderView: View {
     }
 
     private func requestNextChapter(from chapterID: String) {
-        guard chapterAdvance == nil, currentChapter.id == chapterID, !loading else { return }
+        guard scenePhase == .active, chapterAdvance == nil, currentChapter.id == chapterID, !loading else { return }
         chapterAdvance = Task { @MainActor in
             defer { chapterAdvance = nil }
             await loadDirectory()
@@ -158,8 +163,7 @@ struct ReaderView: View {
             if let nextChapter { openChapter(nextChapter) }
             else {
                 saveProgress()
-                dismiss()
-                onReturnToDirectory?(comic)
+                onClose(true)
             }
         }
     }
@@ -207,6 +211,7 @@ struct ReaderView: View {
         error = nil
         loading = true
         selectedChapter = target
+        onPositionChange(target, 0)
     }
 
     @MainActor private func loadDirectory() async {
@@ -265,7 +270,7 @@ struct ReaderView: View {
 
     private func readerHeader(offersLandscapeSizing: Bool) -> some View {
         HStack(spacing: 8) {
-            Button { dismiss() } label: {
+            Button { onClose(false) } label: {
                 Image(systemName: "chevron.down").font(.body.weight(.semibold))
                     .frame(width: 44, height: 44)
                     .contentShape(Circle())
@@ -409,6 +414,7 @@ struct ReaderView: View {
         guard !pages.isEmpty else { return }
         downloads.prioritizeReading(chapterID: currentChapter.id, pageIndex: currentPage)
         library.recordProgress(comic: comic, chapter: currentChapter, page: currentPage, totalPages: pages.count, mode: readingContentMode)
+        onPositionChange(currentChapter, currentPage)
     }
     private func toggleControls() {
         if settings.einkMode.enabled || reduceMotion { controls.toggle() }

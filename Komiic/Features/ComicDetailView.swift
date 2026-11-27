@@ -9,11 +9,11 @@ struct ComicDetailView: View {
     @EnvironmentObject private var settings: ReaderSettings
     @Environment(\.komiicTheme) private var theme
     @Environment(\.openAuthor) private var openAuthor
+    @Environment(\.openReader) private var openReader
     @State private var detail: Comic?
     @State private var chapters: [Chapter] = []
     @State private var loading = true
     @State private var error: String?
-    @State private var launch: ReaderLaunch?
     @State private var addingToShelf = false
     @State private var showingComments = false
     @State private var ascending = true
@@ -165,9 +165,6 @@ struct ComicDetailView: View {
                     .accessibilityLabel("继续阅读，\(progress.chapter.displayTitle)，第 \(progress.page + 1) 页")
             }
         }
-        .fullScreenCover(item: $launch, onDismiss: resetDirectory) { item in
-            ReaderView(comic: item.comic, chapter: item.chapter, initialPage: item.page, chapterDirectory: chapters)
-        }
         .sheet(isPresented: $addingToShelf) { AddToShelfView(comic: displayedComic).presentationDetents([.medium, .large]) }
         .fullScreenCover(isPresented: $showingComments) {
             ComicCommentsDrawer(comicID: comic.id, mode: settings.contentMode) { setCommentsPresented(false) }
@@ -258,8 +255,7 @@ struct ComicDetailView: View {
         let read = library.isChapterRead(chapter.id)
         return Button {
             let progress = library.progress(for: comic.id)
-            launch = ReaderLaunch(comic: displayedComic, chapter: chapter,
-                                  page: progress?.chapter.id == chapter.id ? progress?.page ?? 0 : 0)
+            read(chapter, page: progress?.chapter.id == chapter.id ? progress?.page ?? 0 : 0)
         } label: {
             VStack(spacing: 5) {
                 Text(chapter.serial.isEmpty ? chapter.displayTitle : chapter.serial)
@@ -288,10 +284,14 @@ struct ComicDetailView: View {
     }
     private func startReading() {
         if let progress = library.progress(for: comic.id) {
-            launch = ReaderLaunch(comic: displayedComic, chapter: progress.chapter, page: progress.page)
+            read(progress.chapter, page: progress.page)
         } else if let chapter = chapters.first(where: { $0.type == chapterType }) ?? chapters.first {
-            launch = ReaderLaunch(comic: displayedComic, chapter: chapter)
+            read(chapter)
         }
+    }
+    private func read(_ chapter: Chapter, page: Int = 0) {
+        openReader(ReaderLaunch(comic: displayedComic, chapter: chapter, page: page,
+                                chapterDirectory: chapters, onDismiss: { _ in resetDirectory() }))
     }
     private func scheduleDownload(_ chapter: Chapter) {
         scheduling.insert(chapter.id)

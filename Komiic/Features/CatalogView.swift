@@ -257,15 +257,15 @@ struct CatalogPageSelector: View {
     private var underline: some View {
         GeometryReader { geometry in
             let width = geometry.size.width / CGFloat(CatalogPage.allCases.count)
-            let progress = min(position.progress, CGFloat(CatalogPage.allCases.count - 1))
             let direction: CGFloat = layoutDirection == .rightToLeft ? -1 : 1
             Capsule().fill(theme.accent)
                 .frame(width: min(32, width * 0.6), height: 3)
                 .frame(width: width)
-                .offset(x: progress * width * direction)
+                .offset(x: position.catalogProgress * width * direction)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
                 .padding(.bottom, 2)
         }
+        .animation(nil, value: position.progress)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
     }

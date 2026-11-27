@@ -213,10 +213,17 @@ struct ReaderCanvasView: UIViewControllerRepresentable {
         if gesture.state == .began {
             pinchedDuringDrag = scrollView.isZooming
             beganAtEnd = scrollView.zoomScale == 1 && scrollView.contentOffset.y + viewport.height >= layout.size.height - 8
+            if let window = view.window {
+                let startY = gesture.location(in: window).y - gesture.translation(in: window).y
+                beganAtEnd = beganAtEnd && startY < window.bounds.maxY - window.safeAreaInsets.bottom
+            }
         } else if gesture.state == .ended {
+            defer { beganAtEnd = false }
             let movement = gesture.translation(in: scrollView)
             if beganAtEnd, !pinchedDuringDrag, scrollView.zoomScale == 1,
                movement.y < -85, abs(movement.y) > abs(movement.x) * 1.5 { onEndOfChapter?() }
+        } else if gesture.state == .cancelled || gesture.state == .failed {
+            beganAtEnd = false
         }
     }
     func stop() { host.rootView = AnyView(EmptyView()); scrollView.delegate = nil }

@@ -1,12 +1,5 @@
 import SwiftUI
 
-struct ReaderLaunch: Identifiable {
-    let comic: Comic
-    let chapter: Chapter
-    var page = 0
-    var id: String { "\(chapter.id)-\(page)" }
-}
-
 struct FavoritesView: View {
     @EnvironmentObject private var library: LibraryStore
     @EnvironmentObject private var settings: ReaderSettings
@@ -43,10 +36,10 @@ struct FavoritesView: View {
 
 struct BookmarksView: View {
     @Environment(\.openComicDirectory) private var openComicDirectory
+    @Environment(\.openReader) private var openReader
     @Environment(\.komiicTheme) private var theme
     @EnvironmentObject private var library: LibraryStore
     @EnvironmentObject private var settings: ReaderSettings
-    @State private var launch: ReaderLaunch?
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -56,7 +49,10 @@ struct BookmarksView: View {
                 }
                 ForEach(library.bookmarks.filter { !settings.shouldHide($0.comic) && !library.isBlocked($0.comic) }) { bookmark in
                     ComicActivation(comic: bookmark.comic, action: {
-                        launch = ReaderLaunch(comic: bookmark.comic, chapter: bookmark.chapter, page: bookmark.page)
+                        openReader(ReaderLaunch(comic: bookmark.comic, chapter: bookmark.chapter, page: bookmark.page,
+                                                onDismiss: { finished in
+                            if finished { openComicDirectory(bookmark.comic) }
+                        }))
                     }) {
                         HStack(spacing: 14) {
                             ComicCover(comic: bookmark.comic).frame(width: 58, height: 80).clipShape(RoundedRectangle(cornerRadius: 8))
@@ -75,9 +71,6 @@ struct BookmarksView: View {
                     }
                 }
             }.padding(16)
-        }
-        .fullScreenCover(item: $launch) { item in
-            ReaderView(comic: item.comic, chapter: item.chapter, initialPage: item.page, onReturnToDirectory: openComicDirectory)
         }
     }
 }
