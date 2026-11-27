@@ -38,6 +38,7 @@ struct RootView: View {
     @Environment(\.komiicTheme) private var theme
     @State private var selected: AppTab = .home
     @State private var catalogPage: CatalogPage = .all
+    @State private var catalogPosition = CatalogPagerPosition()
     @State private var gridColumns = UIDevice.current.userInterfaceIdiom == .pad ? 5 : 3
     @State private var paths: [AppTab: NavigationPath] = [:]
     @State private var librarySection: LibrarySection = .shelves
@@ -47,7 +48,7 @@ struct RootView: View {
 
     var body: some View {
         let isPad = UIDevice.current.userInterfaceIdiom == .pad
-        SlidingTabs(selection: $selected) { tab in
+        SlidingTabs(selection: $selected, swipeTargets: swipeTargets, prepareSwipe: prepareSwipe) { tab in
             screen(tab)
                 .environmentObject(content)
                 .environmentObject(library)
@@ -81,6 +82,7 @@ struct RootView: View {
             paths = [:]
             selected = .home
             catalogPage = .all
+            catalogPosition.progress = 0
             searchPrompt = false
         }
         .task { seenCompleted = completedIDs; started = true }
@@ -124,9 +126,9 @@ struct RootView: View {
     }
 
     private func screen(_ tab: AppTab) -> some View {
-        TabRootScreen(tab: tab, isSelected: selected == tab, catalogPage: $catalogPage, librarySection: $librarySection,
+        TabRootScreen(tab: tab, isSelected: selected == tab, catalogPage: $catalogPage, catalogPosition: catalogPosition,
+                      librarySection: $librarySection,
                       path: Binding(get: { paths[tab] ?? NavigationPath() }, set: { paths[tab] = $0 }),
-                      swipeTargets: swipeTargets(for: tab), selectBySwipe: selectBySwipe,
                       openSearchResult: { comic in
                           paths[tab] = NavigationPath()
                           var homePath = NavigationPath()
@@ -143,16 +145,18 @@ struct RootView: View {
     private func swipeTargets(for tab: AppTab) -> TabSwipeTargets {
         guard tab == selected, !searchPrompt, paths[tab]?.isEmpty != false else { return TabSwipeTargets() }
         switch tab {
-        case .home: return TabSwipeTargets(next: catalogPage == .history ? .favorites : nil)
+        case .home: return TabSwipeTargets(next: catalogPosition.isAtEnd ? .favorites : nil)
         case .favorites: return TabSwipeTargets(previous: .home, next: .library)
         case .library: return TabSwipeTargets(previous: .favorites, next: .account)
         case .account: return TabSwipeTargets(previous: .library)
         }
     }
 
-    private func selectBySwipe(_ tab: AppTab) {
-        if tab == .home { catalogPage = .history }
-        selected = tab
+    private func prepareSwipe(to tab: AppTab) -> (() -> Void)? {
+        guard tab == .home, catalogPage != .history else { return nil }
+        let previousPage = catalogPage
+        catalogPage = .history
+        return { catalogPage = previousPage }
     }
 }
 
@@ -160,10 +164,9 @@ private struct TabRootScreen: View {
     let tab: AppTab
     let isSelected: Bool
     @Binding var catalogPage: CatalogPage
+    let catalogPosition: CatalogPagerPosition
     @Binding var librarySection: LibrarySection
     @Binding var path: NavigationPath
-    let swipeTargets: TabSwipeTargets
-    let selectBySwipe: (AppTab) -> Void
     let openSearchResult: (Comic) -> Void
     let openFavorites: () -> Void
     let openBookmarks: () -> Void
@@ -203,28 +206,17 @@ private struct TabRootScreen: View {
             content(bottomInset: bottomInset)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(theme.canvas)
-                .modifier(TabSwipeModifier(targets: swipeTargets, select: selectBySwipe))
                 .navigationTitle(settings.contentMode == .adult ? "H 漫画 · \(tab.title)" : tab.title)
                 .navigationBarTitleDisplayMode(.inline)
+                .toolbar(tab == .home && path.isEmpty ? .hidden : .automatic, for: .navigationBar)
                 .toolbar {
-                    ToolbarItemGroup(placement: .topBarTrailing) {
-                        Button(action: showSearch) { Image(systemName: "magnifyingglass") }
-                            .accessibilityLabel("搜索漫画")
-                        Button { showingPalette = true } label: { Image(systemName: "paintpalette") }
-                            .accessibilityLabel("调色盘")
-                        Menu {
-                            NavigationLink(value: MenuRoute.blocked) { Label("屏蔽漫画", systemImage: "eye.slash") }
-                            NavigationLink(value: MenuRoute.warnings) { Label("内容警告偏好", systemImage: "shield") }
-                            Divider()
-                            Button {
-                                let mode: ComicContentMode = settings.contentMode == .general ? .adult : .general
-                                library.selectMode(mode)
-                                settings.contentMode = mode
-                            } label: {
-                                Label(settings.contentMode == .general ? "切换到 H 漫画 · 18+" : "切换到一般漫画", systemImage: "arrow.triangle.2.circlepath")
-                            }
-                        } label: { Image(systemName: "person.crop.circle") }
-                        .accessibilityLabel("更多功能")
+                    if tab != .home {
+                        ToolbarItemGroup(placement: .topBarTrailing) {
+                            searchButton
+                            Button { showingPalette = true } label: { Image(systemName: "paintpalette") }
+                                .accessibilityLabel("调色盘")
+                            avatarMenu
+                        }
                     }
                 }
                 .navigationDestination(for: Comic.self) { ComicDetailView(comic: $0, bottomInset: bottomInset) }
@@ -244,9 +236,55 @@ private struct TabRootScreen: View {
         }
     }
 
+    private var searchButton: some View {
+        Button(action: showSearch) { actionIcon("magnifyingglass") }
+            .accessibilityLabel("搜索漫画")
+    }
+
+    private var avatarMenu: some View {
+        Menu {
+            if tab == .home {
+                Button { showingPalette = true } label: { Label("调色盘", systemImage: "paintpalette") }
+                Divider()
+            }
+            NavigationLink(value: MenuRoute.blocked) { Label("屏蔽漫画", systemImage: "eye.slash") }
+            NavigationLink(value: MenuRoute.warnings) { Label("内容警告偏好", systemImage: "shield") }
+            Divider()
+            Button {
+                let mode: ComicContentMode = settings.contentMode == .general ? .adult : .general
+                library.selectMode(mode)
+                settings.contentMode = mode
+            } label: {
+                Label(settings.contentMode == .general ? "切换到 H 漫画 · 18+" : "切换到一般漫画", systemImage: "arrow.triangle.2.circlepath")
+            }
+        } label: { actionIcon("person.crop.circle") }
+        .accessibilityLabel("更多功能")
+    }
+
+    @ViewBuilder private func actionIcon(_ name: String) -> some View {
+        if tab == .home {
+            Image(systemName: name)
+                .font(.system(size: 20, weight: .medium))
+                .foregroundStyle(theme.accent)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        } else {
+            Image(systemName: name)
+        }
+    }
+
     @ViewBuilder private func content(bottomInset: CGFloat) -> some View {
         switch tab {
-        case .home: CatalogView(page: $catalogPage, active: isSelected && path.isEmpty, bottomInset: bottomInset)
+        case .home:
+            CatalogView(page: $catalogPage, position: catalogPosition, active: isSelected && path.isEmpty,
+                        bottomInset: bottomInset) {
+                HStack(spacing: 0) {
+                    searchButton
+                    avatarMenu
+                }
+                .buttonStyle(.plain)
+                .komiicGlass(cornerRadius: 24, interactive: true)
+            }
         case .favorites: FavoritesView()
         case .account: AccountView(onOpenFavorites: openFavorites, onOpenBookmarks: openBookmarks,
                                   onOpenShelves: openShelves, isVisible: isSelected && path.isEmpty)

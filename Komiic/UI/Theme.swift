@@ -105,27 +105,6 @@ struct EmptyState: View {
     }
 }
 
-struct PillButton: View {
-    let title: String
-    var selected = false
-    let action: () -> Void
-    @Environment(\.komiicTheme) private var theme
-
-    var body: some View {
-        Button(action: action) {
-            Text(title).font(.subheadline.weight(selected ? .semibold : .regular))
-                .lineLimit(1).minimumScaleFactor(0.75)
-                .padding(.horizontal, 4)
-                .frame(maxWidth: .infinity, minHeight: 44)
-                .foregroundStyle(selected ? theme.accent : Color.secondary)
-                .background(selected ? theme.accentWash : Color.clear, in: Capsule())
-        }
-        .buttonStyle(.plain)
-        .komiicGlass(cornerRadius: 24, interactive: true)
-        .accessibilityAddTraits(selected ? [.isSelected] : [])
-    }
-}
-
 struct SectionHeading: View {
     let title: String
     var subtitle: String? = nil
@@ -141,11 +120,6 @@ struct SectionHeading: View {
 extension View {
     func komiicGlass(cornerRadius: CGFloat = 24, interactive: Bool = false) -> some View {
         modifier(KomiicGlassModifier(cornerRadius: cornerRadius, interactive: interactive))
-    }
-
-    @ViewBuilder func komiicGlassGroup(spacing: CGFloat = 12) -> some View {
-        if #available(iOS 26.0, *) { GlassEffectContainer(spacing: spacing) { self } }
-        else { self }
     }
 
     @ViewBuilder func komiicActionStyle(prominent: Bool = false) -> some View {

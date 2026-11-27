@@ -103,7 +103,14 @@ enum CatalogPage: String, CaseIterable, Identifiable {
     case all, popular, recommended, history
 
     var id: String { rawValue }
-    var title: String { feed?.title ?? "最近阅读" }
+    var title: String {
+        switch self {
+        case .all: return "全部"
+        case .popular: return "最热"
+        case .recommended: return "推荐"
+        case .history: return "最近"
+        }
+    }
 
     var feed: CatalogFeed? {
         switch self {
@@ -115,95 +122,130 @@ enum CatalogPage: String, CaseIterable, Identifiable {
     }
 }
 
-struct CatalogView: View {
-    private static let filterButtonSize: CGFloat = 48
-    private static let filterButtonInset: CGFloat = 14
+@Observable
+final class CatalogPagerPosition {
+    var progress: CGFloat = 0
 
-    @Binding var page: CatalogPage
-    let active: Bool
-    let bottomInset: CGFloat
+    var isAtEnd: Bool { progress >= CGFloat(CatalogPage.allCases.count - 1) - 0.005 }
+
+    var nearestPage: CatalogPage { CatalogPage.allCases[Int(progress.rounded())] }
+}
+
+struct CatalogView<Actions: View>: View {
+    private let filterButtonSize: CGFloat = 48
+    private let filterButtonInset: CGFloat = 14
+
+    @Binding private var page: CatalogPage
+    private let position: CatalogPagerPosition
+    private let active: Bool
+    private let bottomInset: CGFloat
+    private let actions: Actions
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.layoutDirection) private var layoutDirection
     @Environment(\.komiicTheme) private var theme
     @EnvironmentObject private var settings: ReaderSettings
     @EnvironmentObject private var content: AppContentStore
     @State private var filter: ContentFilter = .all
     @State private var showFilter = false
-    @State private var visiblePage: CatalogPage?
+    @State private var scrollPage: CatalogPage?
+    @State private var collapsedPages: Set<CatalogPage> = []
+    @State private var headerInset: CGFloat = 52
+
+    init(page: Binding<CatalogPage>, position: CatalogPagerPosition, active: Bool, bottomInset: CGFloat,
+         @ViewBuilder actions: () -> Actions) {
+        _page = page
+        _scrollPage = State(initialValue: page.wrappedValue)
+        self.position = position
+        self.active = active
+        self.bottomInset = bottomInset
+        self.actions = actions()
+    }
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 6) {
-                ForEach(CatalogPage.allCases) { item in
-                    PillButton(title: item.title, selected: page == item) { select(item) }
-                }
+        pager
+            .overlay(alignment: .top) {
+                CatalogHeader(position: position, collapsed: collapsedPages.contains(page), select: select, actions: actions)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { headerInset = $0 }
             }
-            .komiicGlassGroup(spacing: 6)
-            .padding(.horizontal, 12).padding(.vertical, 8)
-
-            Divider().opacity(0.4)
-            pager
-        }
-        .overlay(alignment: .bottomTrailing) {
-            filterButton.padding([.trailing, .bottom], Self.filterButtonInset)
-        }
-        .sheet(isPresented: $showFilter) {
-            FilterSheet(selection: $filter)
-                .presentationDetents([.medium])
-                .presentationDragIndicator(.visible)
-        }
+            .overlay(alignment: .bottomTrailing) {
+                filterButton.padding([.trailing, .bottom], filterButtonInset)
+            }
+            .sheet(isPresented: $showFilter) {
+                FilterSheet(selection: $filter)
+                    .presentationDetents([.medium])
+                    .presentationDragIndicator(.visible)
+            }
     }
 
     @ViewBuilder private var pager: some View {
         if #available(iOS 26.0, *) {
-            // A page-style TabView clips its hosted pages to the tab bar's safe area.
+            pagerViewport.ignoresSafeArea(.container, edges: .bottom)
+        } else {
+            pagerViewport
+        }
+    }
+
+    private var pagerViewport: some View {
+        GeometryReader { viewport in
+            let width = viewport.size.width
+            let rightToLeft = layoutDirection == .rightToLeft
             ScrollView(.horizontal) {
                 LazyHStack(spacing: 0) {
                     ForEach(CatalogPage.allCases) { item in
                         pageContent(item)
-                            .containerRelativeFrame([.horizontal, .vertical])
+                            .frame(width: width, height: viewport.size.height)
+                            .clipped()
                             .id(item)
                     }
                 }
                 .scrollTargetLayout()
+                .onGeometryChange(for: CGFloat.self) { geometry in
+                    let frame = geometry.frame(in: .named(CatalogScrollSpace.pages))
+                    let offset = rightToLeft ? frame.maxX - width : -frame.minX
+                    return min(max(0, offset / max(1, width)), CGFloat(CatalogPage.allCases.count - 1))
+                } action: { position.progress = $0 }
             }
+            .coordinateSpace(.named(CatalogScrollSpace.pages))
             .scrollIndicators(.hidden, axes: .horizontal)
+            .contentMargins(.horizontal, 0, for: .scrollContent)
             .contentMargins(.bottom, 0, for: .scrollContent)
-            .scrollTargetBehavior(.viewAligned(limitBehavior: .alwaysByOne))
-            .scrollPosition(id: $visiblePage, anchor: .center)
-            .onScrollPhaseChange { _, phase in
-                // Commit the tab selection after the drag has settled.
-                if phase == .idle, let visiblePage, page != visiblePage {
-                    page = visiblePage
-                }
+            .scrollTargetBehavior(.viewAligned(limitBehavior: pageLimit))
+            .scrollPosition(id: $scrollPage, anchor: .center)
+            .onChange(of: scrollPage) { _, current in
+                if let current, page != current { page = current }
             }
-            .onChange(of: page, initial: true) { _, destination in
-                guard visiblePage != destination else { return }
-                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.3)) {
-                    visiblePage = destination
-                }
+            .onChange(of: page) { _, destination in
+                if scrollPage != destination { scrollPage = destination }
             }
-            .ignoresSafeArea(.container, edges: .bottom)
-        } else {
-            TabView(selection: $page) {
-                ForEach(CatalogPage.allCases) { item in
-                    pageContent(item).tag(item)
-                }
-            }
-            .tabViewStyle(.page(indexDisplayMode: .never))
+            // Each page and the clip share the safe-area width, including on notched iPhones.
+            .frame(width: width, height: viewport.size.height)
+            .clipped()
         }
     }
 
+    private var pageLimit: ViewAlignedScrollTargetBehavior.LimitBehavior {
+        if #available(iOS 26.0, *) { return .alwaysByOne }
+        return .always
+    }
+
     private func pageContent(_ item: CatalogPage) -> some View {
-        Group {
-            if let feed = item.feed {
-                CatalogFeedPage(feed: feed, filter: filter, active: active && page == item,
-                                model: content.catalog(feed: feed, mode: settings.contentMode))
+        let onCollapse: (Bool) -> Void = { collapsed in
+            if collapsed {
+                collapsedPages.insert(item)
             } else {
-                HistoryView(filter: filter, active: active && page == item)
+                collapsedPages.remove(item)
+            }
+        }
+        return Group {
+            if let feed = item.feed {
+                CatalogFeedPage(feed: feed, filter: filter, active: active && page == item, headerInset: headerInset,
+                                onCollapse: onCollapse, model: content.catalog(feed: feed, mode: settings.contentMode))
+            } else {
+                HistoryView(filter: filter, active: active && page == item, headerInset: headerInset, onCollapse: onCollapse)
                     .id(content.revision)
             }
         }
-        .contentMargins(.bottom, bottomInset + Self.filterButtonSize + Self.filterButtonInset, for: .scrollContent)
+        .contentMargins(.bottom, bottomInset + filterButtonSize + filterButtonInset, for: .scrollContent)
     }
 
     private var filterButton: some View {
@@ -211,7 +253,7 @@ struct CatalogView: View {
             Image(systemName: filter == .all ? "line.3.horizontal.decrease" : "line.3.horizontal.decrease.circle.fill")
                 .font(.system(size: 19, weight: .medium))
                 .foregroundStyle(filter == .all ? Color.primary : theme.accent)
-                .frame(width: Self.filterButtonSize, height: Self.filterButtonSize)
+                .frame(width: filterButtonSize, height: filterButtonSize)
                 .contentShape(RoundedRectangle(cornerRadius: 14))
         }
         .buttonStyle(.plain)
@@ -221,9 +263,129 @@ struct CatalogView: View {
     }
 
     private func select(_ destination: CatalogPage) {
+        guard scrollPage != destination else { return }
         withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.3)) {
-            page = destination
+            scrollPage = destination
         }
+    }
+}
+
+private enum CatalogScrollSpace { case pages, feed }
+
+private struct CatalogHeader<Actions: View>: View {
+    let position: CatalogPagerPosition
+    let collapsed: Bool
+    let select: (CatalogPage) -> Void
+    let actions: Actions
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        ZStack {
+            if collapsed {
+                CatalogPageTitle(position: position)
+            }
+            HStack(spacing: 8) {
+                if collapsed {
+                    Spacer(minLength: 0)
+                } else {
+                    CatalogPageSelector(position: position, select: select)
+                        .frame(maxWidth: 360)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                actions
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 4)
+        .background {
+            Rectangle().fill(.regularMaterial)
+                .mask(alignment: .top) {
+                    LinearGradient(stops: [.init(color: .black, location: 0.78), .init(color: .clear, location: 1)],
+                                   startPoint: .top, endPoint: .bottom)
+                }
+                .ignoresSafeArea(.container, edges: .top)
+                .allowsHitTesting(false)
+        }
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.16), value: collapsed)
+    }
+}
+
+private struct CatalogPageTitle: View {
+    let position: CatalogPagerPosition
+
+    var body: some View {
+        Text(position.nearestPage.title)
+            .font(.headline)
+            .lineLimit(1)
+            .accessibilityAddTraits(.isHeader)
+    }
+}
+
+private struct CatalogPageSelector: View {
+    let position: CatalogPagerPosition
+    let select: (CatalogPage) -> Void
+    @Environment(\.komiicTheme) private var theme
+    @Environment(\.layoutDirection) private var layoutDirection
+
+    var body: some View {
+        let current = position.nearestPage
+        HStack(spacing: 0) {
+            ForEach(CatalogPage.allCases) { item in
+                Button { select(item) } label: {
+                    Text(item.title)
+                        .font(.subheadline.weight(current == item ? .semibold : .regular))
+                        .foregroundStyle(current == item ? theme.accent : Color.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(current == item ? [.isSelected] : [])
+            }
+        }
+        .overlay {
+            GeometryReader { geometry in
+                let width = geometry.size.width / CGFloat(CatalogPage.allCases.count)
+                let direction: CGFloat = layoutDirection == .rightToLeft ? -1 : 1
+                Capsule().fill(theme.accent)
+                    .frame(width: min(32, width * 0.6), height: 3)
+                    .frame(width: width)
+                    .offset(x: position.progress * width * direction)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+                    .padding(.bottom, 2)
+            }
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+        }
+    }
+}
+
+struct CatalogScrollView<Content: View>: View {
+    let headerInset: CGFloat
+    let onCollapse: (Bool) -> Void
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        Group {
+            if #available(iOS 18.0, *) {
+                ScrollView { content() }
+                    .onScrollGeometryChange(for: Bool.self) { geometry in
+                        geometry.contentOffset.y + geometry.contentInsets.top >= 28
+                    } action: { _, collapsed in onCollapse(collapsed) }
+            } else {
+                ScrollView {
+                    content()
+                        .onGeometryChange(for: Bool.self) { geometry in
+                            geometry.frame(in: .named(CatalogScrollSpace.feed)).minY <= headerInset - 28
+                        } action: { onCollapse($0) }
+                }
+                .coordinateSpace(.named(CatalogScrollSpace.feed))
+            }
+        }
+        .contentMargins(.top, headerInset, for: .scrollContent)
+        .contentMargins(.top, headerInset, for: .scrollIndicators)
+        .scrollBounceBehavior(.always, axes: .vertical)
     }
 }
 
@@ -231,6 +393,8 @@ private struct CatalogFeedPage: View {
     let feed: CatalogFeed
     let filter: ContentFilter
     let active: Bool
+    let headerInset: CGFloat
+    let onCollapse: (Bool) -> Void
     @EnvironmentObject private var library: LibraryStore
     @EnvironmentObject private var settings: ReaderSettings
     @ObservedObject var model: CatalogModel
@@ -240,7 +404,7 @@ private struct CatalogFeedPage: View {
     }
 
     var body: some View {
-        ScrollView {
+        CatalogScrollView(headerInset: headerInset, onCollapse: onCollapse) {
             VStack(spacing: 18) {
                 ComicGrid(comics: visibleComics)
                 if let error = model.error {
@@ -260,7 +424,6 @@ private struct CatalogFeedPage: View {
             .frame(maxWidth: 1_400)
             .frame(maxWidth: .infinity)
         }
-        .scrollBounceBehavior(.always, axes: .vertical)
         .refreshable { await reload() }
         .task(id: "\(ObjectIdentifier(model)):\(active):\(filter.rawValue)") {
             guard !Task.isCancelled, active, model.loadedFilter != filter else { return }

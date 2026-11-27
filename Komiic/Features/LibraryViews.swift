@@ -190,6 +190,8 @@ struct ShelfDetailView: View {
 struct HistoryView: View {
     let filter: ContentFilter
     let active: Bool
+    let headerInset: CGFloat
+    let onCollapse: (Bool) -> Void
     @EnvironmentObject private var library: LibraryStore
     @EnvironmentObject private var settings: ReaderSettings
     @State private var ratings: [String: Int] = [:]
@@ -214,7 +216,7 @@ struct HistoryView: View {
             return filter.matches(sexyLevel: rated.comic.sexyLevel) ? rated : nil
         }
         let comicIDs = active && filter != .all ? recent.filter { $0.comic.sexyLevel == nil }.map(\.id) : []
-        ScrollView {
+        CatalogScrollView(headerInset: headerInset, onCollapse: onCollapse) {
             VStack(spacing: 18) {
                 if recent.isEmpty {
                     EmptyState(symbol: "clock.arrow.circlepath", title: "故事，从这里继续", message: "阅读漫画后，这里会自动记录你的进度。")
@@ -239,7 +241,6 @@ struct HistoryView: View {
             .frame(maxWidth: 1_400)
             .frame(maxWidth: .infinity)
         }
-        .scrollBounceBehavior(.always, axes: .vertical)
         .refreshable {
             await library.refreshOfficialLibrary()
             checkedRatingIDs = Set(ratings.keys)
