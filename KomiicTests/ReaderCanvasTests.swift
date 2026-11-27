@@ -31,6 +31,37 @@ final class ReaderCanvasTests: XCTestCase {
         }
     }
 
+    func testLandscapePagerStartsAtTheFirstSpreadAndReportsTheNextOne() throws {
+        let pages = (0..<5).map { ComicPage(id: "\($0)", kid: "\($0)", width: 640, height: 960) }
+        for direction in ReadingDirection.allCases {
+            let layout = ReaderSpreadLayout(pageCount: pages.count, doublePage: true, direction: direction)
+            let pager = ReaderSpreadPagerController()
+            pager.loadViewIfNeeded()
+            pager.view.frame = CGRect(x: 0, y: 0, width: 1024, height: 768)
+            let requestID = UUID()
+            var reportedPage: Int?
+            pager.configure(ReaderSpreadPager(layout: layout, page: 0, requestID: requestID,
+                canvas: { page in
+                    ReaderCanvasView(pages: pages, scopeID: "\(page)", mode: .spread(layout.slots(for: page)),
+                        landscapeSizing: .original, targetPage: page, requestID: requestID, resetID: requestID,
+                        spacing: 8, footer: "", onPageChange: { _ in }, onEndOfChapter: {},
+                        renderPage: { _ in AnyView(Color.white) })
+                }, onPageChange: { reportedPage = $0 }, onEndOfChapter: {}))
+
+            XCTAssertTrue(pager.scrollView.panGestureRecognizer.isEnabled)
+            XCTAssertEqual(pager.scrollView.contentOffset.x, direction == .right ? 0 : 2048, accuracy: 0.01)
+            let canvas = try XCTUnwrap(pager.children.first as? ReaderCanvasController)
+            canvas.scrollView.setZoomScale(2, animated: false)
+            XCTAssertFalse(pager.scrollView.panGestureRecognizer.isEnabled)
+            canvas.scrollView.setZoomScale(1, animated: false)
+            XCTAssertTrue(pager.scrollView.panGestureRecognizer.isEnabled)
+
+            pager.scrollView.setContentOffset(CGPoint(x: 1024, y: 0), animated: false)
+            pager.scrollViewDidEndDecelerating(pager.scrollView)
+            XCTAssertEqual(reportedPage, 2)
+        }
+    }
+
     func testIPadOriginalSpreadCentersAcrossTheFullViewport() {
         let viewport = CGSize(width: 1554, height: 1080)
         let pages = [

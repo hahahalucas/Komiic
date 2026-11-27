@@ -1,3 +1,4 @@
+import Foundation
 import XCTest
 @testable import Komiic
 
@@ -24,6 +25,40 @@ final class ReaderNavigationTests: XCTestCase {
         let empty = ReaderSpreadLayout(pageCount: 0, doublePage: true, direction: .right)
         XCTAssertTrue(empty.starts.isEmpty)
         XCTAssertTrue(empty.slots(for: 0).isEmpty)
+    }
+
+    func testLandscapePagingStartsAtTheReadingEdgeAndIncludesTheOddLastPage() {
+        let right = ReaderSpreadLayout(pageCount: 5, doublePage: true, direction: .right)
+        let left = ReaderSpreadLayout(pageCount: 5, doublePage: true, direction: .left)
+        XCTAssertEqual((0..<right.count).map { right.page(atHorizontalIndex: $0) }, [0, 2, 4])
+        XCTAssertEqual((0..<left.count).map { left.page(atHorizontalIndex: $0) }, [4, 2, 0])
+        XCTAssertEqual(right.horizontalIndex(for: 0), 0)
+        XCTAssertEqual(left.horizontalIndex(for: 0), 2)
+        XCTAssertEqual(left.horizontalIndex(for: 3), 1)
+        XCTAssertEqual(left.horizontalIndex(for: 4), 0)
+    }
+
+    func testLandscapeContinuationRequiresAForwardHorizontalSwipe() {
+        let right = ReaderSpreadLayout(pageCount: 4, doublePage: true, direction: .right)
+        let left = ReaderSpreadLayout(pageCount: 4, doublePage: true, direction: .left)
+        XCTAssertTrue(right.isForwardSwipe(CGPoint(x: -100, y: 8)))
+        XCTAssertTrue(left.isForwardSwipe(CGPoint(x: 100, y: 8)))
+        XCTAssertFalse(right.isForwardSwipe(CGPoint(x: 100, y: 8)))
+        XCTAssertFalse(left.isForwardSwipe(CGPoint(x: -100, y: 8)))
+        XCTAssertFalse(left.isForwardSwipe(CGPoint(x: 90, y: -100)))
+        XCTAssertFalse(left.isForwardSwipe(CGPoint(x: 20, y: 0)))
+    }
+
+    func testScrollableDirectoryContainsEveryEntryOfTheCurrentType() {
+        let chapters = (1...8).reversed().map { Chapter(id: "chapter-\($0)", serial: "\($0)") }
+        let volumes = (1...8).reversed().map { Chapter(id: "book-\($0)", serial: "\($0)", type: "book") }
+        for group in [chapters, volumes] {
+            let current = group[2]
+            let directory = ReaderChapterNavigation.ordered(chapters + volumes, current: current)
+            XCTAssertEqual(directory.map(\.id), group.reversed().map(\.id))
+            let nearby = ReaderChapterNavigation.nearby(chapters + volumes, current: current)
+            XCTAssertEqual(nearby.map(\.id), directory.suffix(5).map(\.id))
+        }
     }
 
     func testNearbyFiveChaptersAreCenteredAndFilledAtBothEnds() {

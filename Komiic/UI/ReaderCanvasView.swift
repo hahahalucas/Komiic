@@ -12,7 +12,6 @@ struct ReaderCanvasView: UIViewControllerRepresentable {
     let spacing: CGFloat
     let footer: String
     let onPageChange: (Int) -> Void
-    let onZoomChange: (Bool) -> Void
     let onEndOfChapter: () -> Void
     let renderPage: (Int) -> AnyView
 
@@ -20,21 +19,21 @@ struct ReaderCanvasView: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> ReaderCanvasController {
         let controller = ReaderCanvasController()
         controller.onPageChange = { [weak coordinator = context.coordinator] in coordinator?.page($0) }
-        controller.onZoomChange = { [weak coordinator = context.coordinator] in coordinator?.zoom($0) }
         controller.onEndOfChapter = { [weak coordinator = context.coordinator] in coordinator?.owner.onEndOfChapter() }
         return controller
     }
     func updateUIViewController(_ controller: ReaderCanvasController, context: Context) {
         context.coordinator.owner = self
+        configure(controller)
+    }
+    @MainActor func configure(_ controller: ReaderCanvasController) {
         controller.configure(pages: pages, scopeID: scopeID, mode: mode, targetPage: targetPage,
             requestID: requestID, resetID: resetID, spacing: spacing, footer: footer,
             landscapeSizing: landscapeSizing, renderPage: renderPage)
     }
     static func dismantleUIViewController(_ controller: ReaderCanvasController, coordinator: Coordinator) {
         coordinator.pageReport?.cancel()
-        coordinator.zoomReport?.cancel()
         controller.onPageChange = nil
-        controller.onZoomChange = nil
         controller.onEndOfChapter = nil
         controller.stop()
     }
@@ -42,9 +41,7 @@ struct ReaderCanvasView: UIViewControllerRepresentable {
     @MainActor final class Coordinator {
         var owner: ReaderCanvasView
         var pageReport: Task<Void, Never>?
-        var zoomReport: Task<Void, Never>?
         private var currentPage: Int?
-        private var zoomed = false
         init(owner: ReaderCanvasView) { self.owner = owner }
         func page(_ index: Int) {
             guard currentPage != index else { return }
@@ -53,15 +50,6 @@ struct ReaderCanvasView: UIViewControllerRepresentable {
             pageReport = Task { @MainActor [weak self] in
                 guard !Task.isCancelled else { return }
                 self?.owner.onPageChange(index)
-            }
-        }
-        func zoom(_ active: Bool) {
-            guard active != zoomed else { return }
-            zoomed = active
-            zoomReport?.cancel()
-            zoomReport = Task { @MainActor [weak self] in
-                guard !Task.isCancelled else { return }
-                self?.owner.onZoomChange(active)
             }
         }
     }
@@ -89,7 +77,6 @@ struct ReaderCanvasView: UIViewControllerRepresentable {
     private var rebuilding = false
     private var beganAtEnd = false
     private var pinchedDuringDrag = false
-    private let coordinatedParents = NSHashTable<UIScrollView>.weakObjects()
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -135,14 +122,12 @@ struct ReaderCanvasView: UIViewControllerRepresentable {
         if changed || viewport != view.bounds.size { rebuild() }
         else if reset || requested { restoreScale(); if requested { scroll(to: targetPage) } }
         updateVisiblePages(force: changed || footerChanged || requested || reset)
-        coordinateParentGestures()
     }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         guard view.bounds.width > 0, view.bounds.height > 0 else { return }
         if viewport != view.bounds.size { rebuild() }
-        coordinateParentGestures()
         updateVisiblePages()
     }
 
@@ -204,19 +189,6 @@ struct ReaderCanvasView: UIViewControllerRepresentable {
             .environment(\.layoutDirection, .leftToRight).ignoresSafeArea())
         }
         if mode.isChapter { onPageChange?(layout.page(at: max(0, visible.minY))) }
-    }
-
-    private func coordinateParentGestures() {
-        guard !mode.isChapter else { return }
-        var ancestor = scrollView.superview
-        while let node = ancestor {
-            if let parent = node as? UIScrollView, !coordinatedParents.contains(parent) {
-                parent.panGestureRecognizer.maximumNumberOfTouches = 1
-                parent.panGestureRecognizer.require(toFail: scrollView.panGestureRecognizer)
-                coordinatedParents.add(parent)
-            }
-            ancestor = node.superview
-        }
     }
 
     func viewForZooming(in scrollView: UIScrollView) -> UIView? { host.view }
