@@ -68,19 +68,24 @@ struct RootView: View {
             let landscape = isPad && size.width > size.height
             let wideHeader = landscape && geometry.size.width >= 620
             let bottomInset = isPad ? 0 : AppTabBar.phoneHeight + phoneTabPadding
-            navigation(landscape: landscape, wideHeader: wideHeader, bottomInset: bottomInset)
-                .safeAreaInset(edge: .top, spacing: 0) {
-                    if isPad { tabletTabBar(showActions: wideHeader && isAtRoot) }
-                }
-                .overlay(alignment: .bottom) {
-                    if !isPad {
+            let pages = navigation(landscape: landscape, wideHeader: wideHeader, bottomInset: bottomInset)
+            Group {
+                if isPad {
+                    VStack(spacing: 0) {
+                        tabletTabBar(showActions: wideHeader && isAtRoot)
+                            .fixedSize(horizontal: false, vertical: true)
+                        pages.clipped()
+                    }
+                } else {
+                    pages.overlay(alignment: .bottom) {
                         AppTabBar(selected: selected, position: pagerPosition, isPad: false, select: selectTab)
                             .padding(.horizontal, 16)
                             .padding(.bottom, phoneTabPadding)
                     }
                 }
-                .environment(\.comicGridColumns, ComicGridColumns.count(for: size, isPad: isPad))
-                .id(settings.contentMode)
+            }
+            .environment(\.comicGridColumns, ComicGridColumns.count(for: size, isPad: isPad))
+            .id(settings.contentMode)
         }
         .ignoresSafeArea(.keyboard)
         .background(theme.canvas.ignoresSafeArea())
