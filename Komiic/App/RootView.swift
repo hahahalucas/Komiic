@@ -142,10 +142,10 @@ struct RootView: View {
                       showSearch: { searchPrompt = true })
     }
 
-    private func swipeTargets(for tab: AppTab) -> TabSwipeTargets {
-        guard tab == selected, !searchPrompt, paths[tab]?.isEmpty != false else { return TabSwipeTargets() }
+    private func swipeTargets(for tab: AppTab) -> TabSwipeTargets? {
+        guard tab == selected, !searchPrompt, paths[tab]?.isEmpty != false else { return nil }
         switch tab {
-        case .home: return TabSwipeTargets(next: catalogPosition.isAtEnd ? .favorites : nil)
+        case .home: return TabSwipeTargets(next: catalogPosition.nearestPage == .history ? .favorites : nil)
         case .favorites: return TabSwipeTargets(previous: .home, next: .library)
         case .library: return TabSwipeTargets(previous: .favorites, next: .account)
         case .account: return TabSwipeTargets(previous: .library)
@@ -175,6 +175,7 @@ private struct TabRootScreen: View {
     @EnvironmentObject private var settings: ReaderSettings
     @EnvironmentObject private var library: LibraryStore
     @Environment(\.komiicTheme) private var theme
+    @ScaledMetric(relativeTo: .headline) private var actionIconSize: CGFloat = 19
     @State private var showingPalette = false
 
     var body: some View {
@@ -288,10 +289,10 @@ private struct TabRootScreen: View {
 
     private func actionIcon(_ name: String) -> some View {
         Image(systemName: name)
-            .font(.tabHeader.weight(.medium))
+            .font(.system(size: min(actionIconSize, 34), weight: .medium))
             .imageScale(.medium)
             .foregroundStyle(theme.accent)
-            .frame(width: 44, height: 44)
+            .frame(width: 46, height: 44)
             .contentShape(Rectangle())
     }
 

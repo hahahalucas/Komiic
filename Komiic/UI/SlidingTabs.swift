@@ -5,8 +5,6 @@ struct TabSwipeTargets {
     var previous: AppTab? = nil
     var next: AppTab? = nil
 
-    var isEmpty: Bool { previous == nil && next == nil }
-
     func destination(horizontal: CGFloat, vertical: CGFloat) -> AppTab? {
         guard abs(horizontal) > abs(vertical) * 1.3 else { return nil }
         return horizontal < 0 ? next : previous
@@ -15,7 +13,7 @@ struct TabSwipeTargets {
 
 struct SlidingTabs<Screen: View>: UIViewControllerRepresentable {
     @Binding var selection: AppTab
-    let swipeTargets: (AppTab) -> TabSwipeTargets
+    let swipeTargets: (AppTab) -> TabSwipeTargets?
     let prepareSwipe: (AppTab) -> (() -> Void)?
     let screen: (AppTab) -> Screen
 
@@ -58,12 +56,13 @@ final class SlidingTabsCoordinator: NSObject, UITabBarControllerDelegate, UIGest
         let destination: AppTab
         let direction: CGFloat
         let width: CGFloat
+        let finishDistance: CGFloat
         let driver: UIPercentDrivenInteractiveTransition
         let undoPreparation: (() -> Void)?
     }
 
     var selection: Binding<AppTab>
-    var swipeTargets: (AppTab) -> TabSwipeTargets = { _ in TabSwipeTargets() }
+    var swipeTargets: (AppTab) -> TabSwipeTargets? = { _ in nil }
     var prepareSwipe: (AppTab) -> (() -> Void)? = { _ in nil }
     var reduceMotion = false
 
@@ -93,7 +92,8 @@ final class SlidingTabsCoordinator: NSObject, UITabBarControllerDelegate, UIGest
         guard !sliding, activeSwipe == nil, let controller, controller.presentedViewController == nil,
               let screen = controller.selectedViewController?.viewIfLoaded, let touchedView = touch.view,
               touchedView.isDescendant(of: screen), !touchedView.isDescendant(of: controller.tabBar) else { return false }
-        return !swipeTargets(selection.wrappedValue).isEmpty
+        // The home pager may still be settling when the touch starts. Resolve the direction and destination when the pan begins.
+        return swipeTargets(selection.wrappedValue) != nil
     }
 
     func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
@@ -101,8 +101,8 @@ final class SlidingTabsCoordinator: NSObject, UITabBarControllerDelegate, UIGest
         guard !sliding, activeSwipe == nil, let controller, let pan = gestureRecognizer as? UIPanGestureRecognizer else { return false }
         let velocity = pan.velocity(in: controller.view)
         let direction: CGFloat = controller.view.effectiveUserInterfaceLayoutDirection == .rightToLeft ? -1 : 1
-        guard let destination = swipeTargets(selection.wrappedValue)
-            .destination(horizontal: velocity.x * direction, vertical: velocity.y) else { return false }
+        guard let targets = swipeTargets(selection.wrappedValue),
+              let destination = targets.destination(horizontal: velocity.x * direction, vertical: velocity.y) else { return false }
         proposedSwipe = (destination, velocity.x < 0 ? -1 : 1)
         return true
     }
@@ -121,9 +121,12 @@ final class SlidingTabsCoordinator: NSObject, UITabBarControllerDelegate, UIGest
             proposedSwipe = nil
             let driver = UIPercentDrivenInteractiveTransition()
             driver.completionCurve = .easeOut
-            let width = controller.selectedViewController?.view.superview?.bounds.width ?? controller.view.bounds.width
+            let width = max(1, controller.selectedViewController?.view.superview?.bounds.width ?? controller.view.bounds.width)
+            let fromRecent = selection.wrappedValue == .home && proposal.destination == .favorites
+            let finishDistance = fromRecent ? min(width * 0.25, 120) : width * 0.35
             activeSwipe = Swipe(destination: proposal.destination, direction: proposal.direction,
-                                width: max(1, width), driver: driver, undoPreparation: prepareSwipe(proposal.destination))
+                                width: width, finishDistance: finishDistance, driver: driver,
+                                undoPreparation: prepareSwipe(proposal.destination))
             controller.selectedIndex = index
             if !sliding {
                 completeSwipe(completed: controller.selectedIndex == index)
@@ -139,7 +142,7 @@ final class SlidingTabsCoordinator: NSObject, UITabBarControllerDelegate, UIGest
         case .ended:
             swipe.driver.update(progress)
             let speed = pan.velocity(in: controller.view).x * swipe.direction
-            let finishDistance = swipe.width * 0.35
+            let finishDistance = swipe.finishDistance
             if distance >= finishDistance || (distance >= 16 && distance + speed * 0.18 >= finishDistance) {
                 swipe.driver.finish()
             } else {

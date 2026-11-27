@@ -136,8 +136,6 @@ enum CatalogPage: String, CaseIterable, Identifiable {
 final class CatalogPagerPosition {
     var progress: CGFloat = 0
 
-    var isAtEnd: Bool { progress >= CGFloat(CatalogPage.allCases.count - 1) - 0.005 }
-
     var nearestPage: CatalogPage { CatalogPage.allCases[Int(progress.rounded())] }
 }
 
