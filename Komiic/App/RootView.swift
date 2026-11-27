@@ -211,11 +211,11 @@ private struct TabRootScreen: View {
                 .toolbar(tab == .home && path.isEmpty ? .hidden : .automatic, for: .navigationBar)
                 .toolbar {
                     if tab != .home {
-                        ToolbarItemGroup(placement: .topBarTrailing) {
-                            searchButton
-                            Button { showingPalette = true } label: { Image(systemName: "paintpalette") }
-                                .accessibilityLabel("调色盘")
-                            avatarMenu
+                        if #available(iOS 26.0, *) {
+                            ToolbarItem(placement: .topBarTrailing) { topActions }
+                                .sharedBackgroundVisibility(.hidden)
+                        } else {
+                            ToolbarItem(placement: .topBarTrailing) { topActions }
                         }
                     }
                 }
@@ -236,6 +236,15 @@ private struct TabRootScreen: View {
         }
     }
 
+    private var topActions: some View {
+        HStack(spacing: 0) {
+            searchButton
+            avatarMenu
+        }
+        .buttonStyle(.plain)
+        .komiicGlass(cornerRadius: 24, interactive: true)
+    }
+
     private var searchButton: some View {
         Button(action: showSearch) { actionIcon("magnifyingglass") }
             .accessibilityLabel("搜索漫画")
@@ -243,10 +252,8 @@ private struct TabRootScreen: View {
 
     private var avatarMenu: some View {
         Menu {
-            if tab == .home {
-                Button { showingPalette = true } label: { Label("调色盘", systemImage: "paintpalette") }
-                Divider()
-            }
+            Button { showingPalette = true } label: { Label("调色盘", systemImage: "paintpalette") }
+            Divider()
             NavigationLink(value: MenuRoute.blocked) { Label("屏蔽漫画", systemImage: "eye.slash") }
             NavigationLink(value: MenuRoute.warnings) { Label("内容警告偏好", systemImage: "shield") }
             Divider()
@@ -261,16 +268,12 @@ private struct TabRootScreen: View {
         .accessibilityLabel("更多功能")
     }
 
-    @ViewBuilder private func actionIcon(_ name: String) -> some View {
-        if tab == .home {
-            Image(systemName: name)
-                .font(.system(size: 20, weight: .medium))
-                .foregroundStyle(theme.accent)
-                .frame(width: 44, height: 44)
-                .contentShape(Rectangle())
-        } else {
-            Image(systemName: name)
-        }
+    private func actionIcon(_ name: String) -> some View {
+        Image(systemName: name)
+            .font(.system(size: 20, weight: .medium))
+            .foregroundStyle(theme.accent)
+            .frame(width: 44, height: 44)
+            .contentShape(Rectangle())
     }
 
     @ViewBuilder private func content(bottomInset: CGFloat) -> some View {
@@ -278,12 +281,7 @@ private struct TabRootScreen: View {
         case .home:
             CatalogView(page: $catalogPage, position: catalogPosition, active: isSelected && path.isEmpty,
                         bottomInset: bottomInset) {
-                HStack(spacing: 0) {
-                    searchButton
-                    avatarMenu
-                }
-                .buttonStyle(.plain)
-                .komiicGlass(cornerRadius: 24, interactive: true)
+                topActions
             }
         case .favorites: FavoritesView()
         case .account: AccountView(onOpenFavorites: openFavorites, onOpenBookmarks: openBookmarks,

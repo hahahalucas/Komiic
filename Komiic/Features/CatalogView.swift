@@ -12,6 +12,7 @@ final class CatalogModel: ObservableObject {
     private let fetchComics: (CatalogFeed, Int, ContentFilter) async throws -> [Comic]
     private var requestTask: Task<[Comic], Error>?
     private var requestedFilter: ContentFilter?
+    private var retryFromFirstPage = true
     private let snapshots: AppSnapshotStore?
     private let cachePrefix: String
     private let scopeIsCurrent: () -> Bool
@@ -36,6 +37,7 @@ final class CatalogModel: ObservableObject {
     }
 
     func load(feed: CatalogFeed, filter: ContentFilter, reset: Bool) async {
+        guard scopeIsCurrent() else { return }
         if reset {
             generation = UUID()
             requestTask?.cancel()
@@ -46,11 +48,14 @@ final class CatalogModel: ObservableObject {
                 hasMore = true
                 loadedFilter = nil
             }
-        } else if loading || !hasMore { return }
+        } else {
+            guard !loading, hasMore, loadedFilter == filter else { return }
+        }
         let requestID = generation
         let requestedOffset = reset ? 0 : offset
         loading = true
         requestedFilter = filter
+        retryFromFirstPage = reset
         error = nil
         // A collapsing refresh control or a pager transition must not cancel the request.
         // A newer reset explicitly cancels and supersedes it instead.
@@ -84,6 +89,11 @@ final class CatalogModel: ObservableObject {
             // cancels still needs a retry state instead of an endless initial spinner.
             if generation == requestID { self.error = error.localizedDescription }
         }
+    }
+
+    func retry(feed: CatalogFeed, filter: ContentFilter) async {
+        guard error != nil else { return }
+        await load(feed: feed, filter: filter, reset: retryFromFirstPage || requestedFilter != filter)
     }
 
     func cancel() {
@@ -390,6 +400,8 @@ struct CatalogScrollView<Content: View>: View {
 }
 
 private struct CatalogFeedPage: View {
+    private let paginationLeadDistance: CGFloat = 160
+
     let feed: CatalogFeed
     let filter: ContentFilter
     let active: Bool
@@ -409,15 +421,15 @@ private struct CatalogFeedPage: View {
                 ComicGrid(comics: visibleComics)
                 if let error = model.error {
                     EmptyState(symbol: "wifi.exclamationmark", title: "连接暂时不可用", message: error,
-                               actionTitle: "重新连接", action: { Task { await reload() } })
-                } else if model.loading || model.loadedFilter == nil {
+                               actionTitle: "重新连接", action: {
+                                   Task { await model.retry(feed: feed, filter: filter) }
+                               })
+                } else if model.loading || model.loadedFilter != filter {
                     ProgressView("正在载入漫画…").font(.caption).padding(35)
+                } else if feed.supportsPagination, model.hasMore {
+                    if active { paginationMarker }
                 } else if visibleComics.isEmpty {
                     EmptyState(symbol: "books.vertical", title: "暂无漫画", message: "尝试调整筛选，或稍后刷新。")
-                }
-                if feed.supportsPagination, model.hasMore, !model.loading, model.loadedFilter != nil, model.error == nil {
-                    Button("载入更多") { Task { await model.load(feed: feed, filter: filter, reset: false) } }
-                        .buttonStyle(.bordered).padding(.bottom, 14)
                 }
             }
             .padding(14)
@@ -429,6 +441,24 @@ private struct CatalogFeedPage: View {
             guard !Task.isCancelled, active, model.loadedFilter != filter else { return }
             await model.loadIfNeeded(feed: feed, filter: filter)
         }
+    }
+
+    private var paginationMarker: some View {
+        Color.clear
+            .frame(height: 1)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+            .onGeometryChange(for: Bool.self) { geometry in
+                guard let viewport = geometry.bounds(of: .scrollView(axis: .vertical)) else { return false }
+                return viewport.maxY >= -paginationLeadDistance
+            } action: { nearEnd in
+                guard nearEnd else { return }
+                Task {
+                    guard model.error == nil else { return }
+                    await model.load(feed: feed, filter: filter, reset: false)
+                }
+            }
+            .id(model.comics.count)
     }
 
     private func reload() async {

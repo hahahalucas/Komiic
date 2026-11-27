@@ -32,6 +32,7 @@ on:
       - codex/komiic-1.0.4
       - codex/komiic-1.0.5
       - codex/komiic-1.0.6
+      - codex/komiic-1.0.7
 
 permissions:
   contents: read
@@ -42,7 +43,7 @@ concurrency:
 
 jobs:
   api-contract:
-    if: ${{ !contains(fromJSON('["codex/komiic-1.0.2-rebuild", "codex/komiic-1.0.3", "codex/komiic-1.0.4", "codex/komiic-1.0.5", "codex/komiic-1.0.6"]'), github.ref_name) }}
+    if: ${{ !contains(fromJSON('["codex/komiic-1.0.2-rebuild", "codex/komiic-1.0.3", "codex/komiic-1.0.4", "codex/komiic-1.0.5", "codex/komiic-1.0.6", "codex/komiic-1.0.7"]'), github.ref_name) }}
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
@@ -66,7 +67,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        mode: ${{ fromJSON(contains(fromJSON('["codex/komiic-1.0.2-rebuild", "codex/komiic-1.0.3", "codex/komiic-1.0.4", "codex/komiic-1.0.5", "codex/komiic-1.0.6"]'), github.ref_name) && '["ipa"]' || '["ipa", "full"]') }}
+        mode: ${{ fromJSON(contains(fromJSON('["codex/komiic-1.0.2-rebuild", "codex/komiic-1.0.3", "codex/komiic-1.0.4", "codex/komiic-1.0.5", "codex/komiic-1.0.6", "codex/komiic-1.0.7"]'), github.ref_name) && '["ipa"]' || '["ipa", "full"]') }}
     env:
       KOMIIC_BUNDLE_ID: ${{ inputs.bundle_id || 'com.example.Komiic' }}
     steps:
