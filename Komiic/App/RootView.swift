@@ -56,6 +56,7 @@ struct RootView: View {
     @State private var started = false
     @State private var reader: ReaderLaunch?
     @State private var readerDismissal: (() -> Void)?
+    @State private var tabletTabBarHeight: CGFloat = 60
 
     private var selected: AppTab { activePage.tab }
     private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
@@ -68,24 +69,28 @@ struct RootView: View {
             let landscape = isPad && size.width > size.height
             let wideHeader = landscape && geometry.size.width >= 620
             let bottomInset = isPad ? 0 : AppTabBar.phoneHeight + phoneTabPadding
-            let pages = navigation(landscape: landscape, wideHeader: wideHeader, bottomInset: bottomInset)
-            Group {
-                if isPad {
-                    VStack(spacing: 0) {
+            let tabletTopInset = isPad ? tabletTabBarHeight : 0
+            navigation(landscape: landscape, wideHeader: wideHeader,
+                       tabletTopInset: tabletTopInset, bottomInset: bottomInset)
+                .safeAreaPadding(.top, isAtRoot ? 0 : tabletTopInset)
+                .overlay(alignment: .top) {
+                    if isPad {
                         tabletTabBar(showActions: wideHeader && isAtRoot)
                             .fixedSize(horizontal: false, vertical: true)
-                        pages.clipped()
+                            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                                tabletTabBarHeight = height
+                            }
                     }
-                } else {
-                    pages.overlay(alignment: .bottom) {
+                }
+                .overlay(alignment: .bottom) {
+                    if !isPad {
                         AppTabBar(selected: selected, position: pagerPosition, isPad: false, select: selectTab)
                             .padding(.horizontal, 16)
                             .padding(.bottom, phoneTabPadding)
                     }
                 }
-            }
-            .environment(\.comicGridColumns, ComicGridColumns.count(for: size, isPad: isPad))
-            .id(settings.contentMode)
+                .environment(\.comicGridColumns, ComicGridColumns.count(for: size, isPad: isPad))
+                .id(settings.contentMode)
         }
         .ignoresSafeArea(.keyboard)
         .background(theme.canvas.ignoresSafeArea())
@@ -177,9 +182,9 @@ struct RootView: View {
             }
     }
 
-    private func navigation(landscape: Bool, wideHeader: Bool, bottomInset: CGFloat) -> some View {
+    private func navigation(landscape: Bool, wideHeader: Bool, tabletTopInset: CGFloat, bottomInset: CGFloat) -> some View {
         NavigationStack(path: path) {
-            rootPages(wideHeader: wideHeader, bottomInset: bottomInset)
+            rootPages(wideHeader: wideHeader, tabletTopInset: tabletTopInset, bottomInset: bottomInset)
                 .background(theme.canvas)
                 .toolbar(isAtRoot ? .hidden : .automatic, for: .navigationBar)
                 .navigationDestination(for: Comic.self) { comic in
@@ -208,14 +213,15 @@ struct RootView: View {
         .environment(\.openReader) { presentReader($0) }
     }
 
-    private func rootPages(wideHeader: Bool, bottomInset: CGFloat) -> some View {
+    private func rootPages(wideHeader: Bool, tabletTopInset: CGFloat, bottomInset: CGFloat) -> some View {
         SlidingTabs(scrollPage: $scrollPage, position: pagerPosition, didSettle: didSettle) { page in
             let headerInset: CGFloat = wideHeader ? (page.tab == .home ? 44 : 0) : headerHeight
-            screen(page, headerInset: headerInset, bottomInset: bottomInset)
+            screen(page, headerInset: tabletTopInset + headerInset, bottomInset: bottomInset)
                 .accessibilityHidden(activePage != page)
         }
         .overlay(alignment: .top) {
             header(wide: wideHeader)
+                .padding(.top, tabletTopInset)
         }
         .overlay(alignment: .bottomTrailing) {
             PagerFilterButton(selection: catalogSelection, position: pagerPosition)
@@ -235,17 +241,27 @@ struct RootView: View {
                 .contentMargins(.top, headerInset, for: .scrollContent)
                 .contentMargins(.bottom, bottomInset, for: .scrollContent)
         case .library:
-            VStack(spacing: 0) {
-                Picker("资料库", selection: $librarySection) {
-                    Text("书签").tag(LibrarySection.bookmarks)
-                    Text("书柜").tag(LibrarySection.shelves)
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal, 18).padding(.vertical, 12)
+            let picker = Picker("资料库", selection: $librarySection) {
+                Text("书签").tag(LibrarySection.bookmarks)
+                Text("书柜").tag(LibrarySection.shelves)
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 18).padding(.vertical, 12)
+            let sections = Group {
                 if librarySection == .shelves { ShelvesView() } else { BookmarksView() }
             }
-            .padding(.top, headerInset)
-            .contentMargins(.bottom, bottomInset, for: .scrollContent)
+            if isPad {
+                sections.safeAreaInset(edge: .top, spacing: 0) {
+                    picker.padding(.top, headerInset)
+                }
+            } else {
+                VStack(spacing: 0) {
+                    picker
+                    sections
+                }
+                .padding(.top, headerInset)
+                .contentMargins(.bottom, bottomInset, for: .scrollContent)
+            }
         case .account:
             AccountView(onOpenFavorites: { open(.favorites) },
                         onOpenBookmarks: { librarySection = .bookmarks; open(.library) },
@@ -271,7 +287,7 @@ struct RootView: View {
                             LinearGradient(stops: [.init(color: .black, location: 0.78), .init(color: .clear, location: 1)],
                                            startPoint: .top, endPoint: .bottom)
                         }
-                        .ignoresSafeArea(.container, edges: .top)
+                        .ignoresSafeArea(.container, edges: isPad ? [] : .top)
                         .allowsHitTesting(false)
                 }
             }
