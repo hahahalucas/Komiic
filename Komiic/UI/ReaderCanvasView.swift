@@ -5,6 +5,7 @@ struct ReaderCanvasView: UIViewControllerRepresentable {
     let pages: [ComicPage]
     let scopeID: String
     let mode: ReaderCanvasMode
+    var landscapeSizing: ReaderLandscapeSizing? = nil
     let targetPage: Int
     let requestID: UUID
     let resetID: UUID
@@ -26,7 +27,8 @@ struct ReaderCanvasView: UIViewControllerRepresentable {
     func updateUIViewController(_ controller: ReaderCanvasController, context: Context) {
         context.coordinator.owner = self
         controller.configure(pages: pages, scopeID: scopeID, mode: mode, targetPage: targetPage,
-            requestID: requestID, resetID: resetID, spacing: spacing, footer: footer, renderPage: renderPage)
+            requestID: requestID, resetID: resetID, spacing: spacing, footer: footer,
+            landscapeSizing: landscapeSizing, renderPage: renderPage)
     }
     static func dismantleUIViewController(_ controller: ReaderCanvasController, coordinator: Coordinator) {
         coordinator.pageReport?.cancel()
@@ -76,6 +78,7 @@ struct ReaderCanvasView: UIViewControllerRepresentable {
     private var pages: [ComicPage] = []
     private var scopeID: String?
     private var mode: ReaderCanvasMode = .chapter
+    private var landscapeSizing: ReaderLandscapeSizing?
     private var targetPage = 0
     private var requestID: UUID?
     private var resetID: UUID?
@@ -114,13 +117,16 @@ struct ReaderCanvasView: UIViewControllerRepresentable {
 
     func configure(pages: [ComicPage], scopeID: String, mode: ReaderCanvasMode, targetPage: Int,
                    requestID: UUID, resetID: UUID, spacing: CGFloat, footer: String,
+                   landscapeSizing: ReaderLandscapeSizing? = nil,
                    renderPage: @escaping (Int) -> AnyView) {
         loadViewIfNeeded()
         let changed = self.scopeID != scopeID || self.pages != pages || self.mode != mode || self.spacing != spacing
+            || self.landscapeSizing != landscapeSizing
         let requested = self.requestID != requestID
         let reset = self.resetID != resetID
         let footerChanged = self.footer != footer
         self.pages = pages; self.scopeID = scopeID; self.mode = mode; self.targetPage = targetPage
+        self.landscapeSizing = landscapeSizing
         self.requestID = requestID; self.resetID = resetID; self.spacing = spacing; self.footer = footer
         self.renderPage = renderPage
         if changed || viewport != view.bounds.size { rebuild() }
@@ -143,7 +149,8 @@ struct ReaderCanvasView: UIViewControllerRepresentable {
         viewport = view.bounds.size
         scrollView.frame = view.bounds
         scrollView.setZoomScale(1, animated: false)
-        layout = ReaderCanvasLayout(pages: pages, viewport: viewport, mode: mode, spacing: spacing)
+        layout = ReaderCanvasLayout(pages: pages, viewport: viewport, mode: mode, spacing: spacing,
+                                    landscapeSizing: landscapeSizing)
         host.view.transform = .identity
         host.view.frame = CGRect(origin: .zero, size: layout.size)
         scrollView.contentSize = layout.size

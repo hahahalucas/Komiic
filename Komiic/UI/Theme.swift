@@ -122,8 +122,13 @@ struct SectionHeading: View {
 }
 
 extension View {
-    func komiicGlass(cornerRadius: CGFloat = 24, interactive: Bool = false) -> some View {
-        modifier(KomiicGlassModifier(cornerRadius: cornerRadius, interactive: interactive))
+    func komiicGlass(cornerRadius: CGFloat = 24, interactive: Bool = false, clear: Bool = false) -> some View {
+        modifier(KomiicGlassModifier(cornerRadius: cornerRadius, interactive: interactive, clear: clear))
+    }
+
+    @ViewBuilder func komiicScrollEdgeHidden(_ hidden: Bool, for edges: Edge.Set) -> some View {
+        if #available(iOS 26.0, *), hidden { scrollEdgeEffectHidden(true, for: edges) }
+        else { self }
     }
 
     @ViewBuilder func komiicActionStyle(prominent: Bool = false) -> some View {
@@ -153,6 +158,7 @@ private struct KomiicCardModifier: ViewModifier {
 private struct KomiicGlassModifier: ViewModifier {
     let cornerRadius: CGFloat
     let interactive: Bool
+    let clear: Bool
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.komiicTheme) private var theme
 
@@ -161,7 +167,11 @@ private struct KomiicGlassModifier: ViewModifier {
             content.background(theme.card, in: RoundedRectangle(cornerRadius: cornerRadius))
                 .overlay(RoundedRectangle(cornerRadius: cornerRadius).stroke(KomiicTheme.line, lineWidth: 1))
         } else if #available(iOS 26.0, *) {
-            content.glassEffect(.regular.interactive(interactive), in: RoundedRectangle(cornerRadius: cornerRadius))
+            let glass: Glass = clear ? .clear : .regular
+            content.glassEffect(glass.interactive(interactive), in: RoundedRectangle(cornerRadius: cornerRadius))
+        } else if clear {
+            content.background(theme.card.opacity(0.75), in: RoundedRectangle(cornerRadius: cornerRadius))
+                .overlay(RoundedRectangle(cornerRadius: cornerRadius).stroke(KomiicTheme.line, lineWidth: 1))
         } else {
             content.background(.regularMaterial, in: RoundedRectangle(cornerRadius: cornerRadius))
         }

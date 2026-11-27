@@ -3,6 +3,7 @@ import SwiftUI
 struct ComicDetailView: View {
     let comic: Comic
     let bottomInset: CGFloat
+    var transparentHeader = false
     @EnvironmentObject private var library: LibraryStore
     @EnvironmentObject private var downloads: DownloadStore
     @EnvironmentObject private var settings: ReaderSettings
@@ -139,8 +140,10 @@ struct ComicDetailView: View {
                 .frame(maxWidth: 960).frame(maxWidth: .infinity)
         }
         .background(theme.canvas)
-        .navigationTitle("漫画详情").navigationBarTitleDisplayMode(.inline)
+        .navigationTitle(transparentHeader ? "" : "漫画详情").navigationBarTitleDisplayMode(.inline)
         .toolbar(.visible, for: .navigationBar)
+        .toolbarBackground(transparentHeader ? .hidden : .automatic, for: .navigationBar)
+        .komiicScrollEdgeHidden(transparentHeader, for: .top)
         .toolbar {
             Menu {
                 ShareLink(item: KomiicAPI(mode: settings.contentMode).baseURL.appendingPathComponent("comic/\(comic.id)"))

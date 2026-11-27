@@ -3,7 +3,9 @@ import Foundation
 enum CatalogFeed: String, CaseIterable, Identifiable, Sendable {
     case all
     case popular = "totalPopular"
+    case monthlyPopular
     case recommended = "aiRecommended"
+    case readerWeekly, readerMonthly, readerYearly
 
     var id: String { rawValue }
     var supportsPagination: Bool { self != .recommended }
@@ -12,7 +14,20 @@ enum CatalogFeed: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .all: return "所有漫画"
         case .popular: return "总最热"
-        case .recommended: return "推荐漫画"
+        case .monthlyPopular: return "当月最热"
+        case .recommended: return "AI推荐"
+        case .readerWeekly: return "读者推荐（周）"
+        case .readerMonthly: return "读者推荐（月）"
+        case .readerYearly: return "读者推荐（年）"
+        }
+    }
+
+    var recommendationPeriod: String? {
+        switch self {
+        case .readerWeekly: return "WEEK"
+        case .readerMonthly: return "MONTH"
+        case .readerYearly: return "YEAR"
+        default: return nil
         }
     }
 }

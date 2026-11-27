@@ -122,249 +122,179 @@ enum CatalogPage: String, CaseIterable, Identifiable {
         }
     }
 
-    var feed: CatalogFeed? {
+    var feedOptions: [CatalogFeed] {
         switch self {
-        case .all: return .all
-        case .popular: return .popular
-        case .recommended: return .recommended
-        case .history: return nil
+        case .popular: return [.popular, .monthlyPopular]
+        case .recommended: return [.recommended, .readerWeekly, .readerMonthly, .readerYearly]
+        default: return []
         }
     }
 }
 
 @Observable
-final class CatalogPagerPosition {
-    var progress: CGFloat = 0
+final class CatalogSelection {
+    var filter: ContentFilter = .all
+    private var popular: CatalogFeed = .popular
+    private var recommended: CatalogFeed = .recommended
+    private var collapsedPages: Set<CatalogPage> = []
 
-    var nearestPage: CatalogPage { CatalogPage.allCases[Int(progress.rounded())] }
+    func feed(for page: CatalogPage) -> CatalogFeed? {
+        switch page {
+        case .all: return .all
+        case .popular: return popular
+        case .recommended: return recommended
+        case .history: return nil
+        }
+    }
+
+    func select(_ feed: CatalogFeed, on page: CatalogPage) {
+        guard page.feedOptions.contains(feed), self.feed(for: page) != feed else { return }
+        if page == .popular { popular = feed } else { recommended = feed }
+        collapsedPages.remove(page)
+    }
+
+    func isCollapsed(_ page: CatalogPage) -> Bool { collapsedPages.contains(page) }
+
+    func setCollapsed(_ collapsed: Bool, on page: CatalogPage) {
+        guard collapsed != isCollapsed(page) else { return }
+        if collapsed { collapsedPages.insert(page) } else { collapsedPages.remove(page) }
+    }
 }
 
-struct CatalogView<Actions: View>: View {
-    private let filterButtonSize: CGFloat = 48
-    private let filterButtonInset: CGFloat = 14
+private enum CatalogScrollSpace { case feed }
 
-    @Binding private var page: CatalogPage
-    private let position: CatalogPagerPosition
-    private let active: Bool
-    private let bottomInset: CGFloat
-    private let actions: Actions
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.layoutDirection) private var layoutDirection
-    @Environment(\.komiicTheme) private var theme
+struct CatalogPageContent: View {
+    let page: CatalogPage
+    let active: Bool
+    let headerInset: CGFloat
+    let bottomInset: CGFloat
+    let selection: CatalogSelection
     @EnvironmentObject private var settings: ReaderSettings
     @EnvironmentObject private var content: AppContentStore
-    @State private var filter: ContentFilter = .all
-    @State private var showFilter = false
-    @State private var scrollPage: CatalogPage?
-    @State private var collapsedPages: Set<CatalogPage> = []
-    @State private var headerInset: CGFloat = 52
-
-    init(page: Binding<CatalogPage>, position: CatalogPagerPosition, active: Bool, bottomInset: CGFloat,
-         @ViewBuilder actions: () -> Actions) {
-        _page = page
-        _scrollPage = State(initialValue: page.wrappedValue)
-        self.position = position
-        self.active = active
-        self.bottomInset = bottomInset
-        self.actions = actions()
-    }
 
     var body: some View {
-        pager
-            .overlay(alignment: .top) {
-                CatalogHeader(position: position, collapsed: collapsedPages.contains(page), select: select, actions: actions)
-                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { headerInset = $0 }
-            }
-            .overlay(alignment: .bottomTrailing) {
-                filterButton.padding([.trailing, .bottom], filterButtonInset)
-            }
-            .sheet(isPresented: $showFilter) {
-                FilterSheet(selection: $filter)
-                    .presentationDetents([.medium])
-                    .presentationDragIndicator(.visible)
-            }
-    }
-
-    @ViewBuilder private var pager: some View {
-        if #available(iOS 26.0, *) {
-            pagerViewport.ignoresSafeArea(.container, edges: .bottom)
-        } else {
-            pagerViewport
-        }
-    }
-
-    private var pagerViewport: some View {
-        GeometryReader { viewport in
-            let width = viewport.size.width
-            let rightToLeft = layoutDirection == .rightToLeft
-            ScrollView(.horizontal) {
-                LazyHStack(spacing: 0) {
-                    ForEach(CatalogPage.allCases) { item in
-                        pageContent(item)
-                            .frame(width: width, height: viewport.size.height)
-                            .clipped()
-                            .id(item)
-                    }
-                }
-                .scrollTargetLayout()
-                .onGeometryChange(for: CGFloat.self) { geometry in
-                    let frame = geometry.frame(in: .named(CatalogScrollSpace.pages))
-                    let offset = rightToLeft ? frame.maxX - width : -frame.minX
-                    return min(max(0, offset / max(1, width)), CGFloat(CatalogPage.allCases.count - 1))
-                } action: { position.progress = $0 }
-            }
-            .coordinateSpace(.named(CatalogScrollSpace.pages))
-            .scrollIndicators(.hidden, axes: .horizontal)
-            .contentMargins(.horizontal, 0, for: .scrollContent)
-            .contentMargins(.bottom, 0, for: .scrollContent)
-            .scrollTargetBehavior(.viewAligned(limitBehavior: pageLimit))
-            .scrollPosition(id: $scrollPage, anchor: .center)
-            .onChange(of: scrollPage) { _, current in
-                if let current, page != current { page = current }
-            }
-            .onChange(of: page) { _, destination in
-                if scrollPage != destination { scrollPage = destination }
-            }
-            // Each page and the clip share the safe-area width, including on notched iPhones.
-            .frame(width: width, height: viewport.size.height)
-            .clipped()
-        }
-    }
-
-    private var pageLimit: ViewAlignedScrollTargetBehavior.LimitBehavior {
-        if #available(iOS 26.0, *) { return .alwaysByOne }
-        return .always
-    }
-
-    private func pageContent(_ item: CatalogPage) -> some View {
-        let onCollapse: (Bool) -> Void = { collapsed in
-            if collapsed {
-                collapsedPages.insert(item)
-            } else {
-                collapsedPages.remove(item)
-            }
-        }
-        return Group {
-            if let feed = item.feed {
-                CatalogFeedPage(feed: feed, filter: filter, active: active && page == item, headerInset: headerInset,
+        Group {
+            if let feed = selection.feed(for: page) {
+                CatalogFeedPage(feed: feed, filter: selection.filter, active: active, headerInset: headerInset,
                                 onCollapse: onCollapse, model: content.catalog(feed: feed, mode: settings.contentMode))
+                    .id(feed)
             } else {
-                HistoryView(filter: filter, active: active && page == item, headerInset: headerInset, onCollapse: onCollapse)
+                HistoryView(filter: selection.filter, active: active, headerInset: headerInset, onCollapse: onCollapse)
                     .id(content.revision)
             }
         }
-        .contentMargins(.bottom, bottomInset + filterButtonSize + filterButtonInset, for: .scrollContent)
+        .contentMargins(.bottom, bottomInset + CatalogFilterButton.size + CatalogFilterButton.inset, for: .scrollContent)
     }
 
-    private var filterButton: some View {
+    private func onCollapse(_ collapsed: Bool) { selection.setCollapsed(collapsed, on: page) }
+}
+
+struct CatalogPageSelector: View {
+    let page: CatalogPage
+    let position: AppPagerPosition
+    let selection: CatalogSelection
+    let collapsed: Bool
+    let select: (CatalogPage) -> Void
+    @Environment(\.komiicTheme) private var theme
+    @Environment(\.layoutDirection) private var layoutDirection
+
+    var body: some View {
+        Group {
+            if collapsed {
+                if page.feedOptions.isEmpty {
+                    Text(page.title)
+                        .font(.tabHeader)
+                        .lineLimit(1)
+                        .accessibilityAddTraits(.isHeader)
+                } else {
+                    pageMenu(page, expanded: false)
+                }
+            } else {
+                HStack(spacing: 0) {
+                    ForEach(CatalogPage.allCases) { item in
+                        if page == item, !item.feedOptions.isEmpty {
+                            pageMenu(item, expanded: true)
+                        } else {
+                            Button { select(item) } label: { pageLabel(item, expanded: true) }
+                                .accessibilityAddTraits(page == item ? [.isSelected] : [])
+                        }
+                    }
+                }
+                .overlay(alignment: .bottom) { underline }
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func pageMenu(_ item: CatalogPage, expanded: Bool) -> some View {
+        Menu {
+            ForEach(item.feedOptions) { feed in
+                Button { selection.select(feed, on: item) } label: {
+                    if selection.feed(for: item) == feed { Label(feed.title, systemImage: "checkmark") }
+                    else { Text(feed.title) }
+                }
+            }
+        } label: {
+            pageLabel(item, expanded: expanded, showsMenu: true)
+        }
+        .accessibilityAddTraits(.isSelected)
+        .accessibilityValue(selection.feed(for: item)?.title ?? "")
+    }
+
+    private func pageLabel(_ item: CatalogPage, expanded: Bool, showsMenu: Bool = false) -> some View {
+        HStack(spacing: 3) {
+            Text(item.title)
+                .font(.tabHeader.weight(page == item ? .semibold : .regular))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            if showsMenu { Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold)) }
+        }
+        .foregroundStyle(page == item ? theme.accent : Color.secondary)
+        .frame(maxWidth: expanded ? .infinity : nil, minHeight: 44)
+        .contentShape(Rectangle())
+    }
+
+    private var underline: some View {
+        GeometryReader { geometry in
+            let width = geometry.size.width / CGFloat(CatalogPage.allCases.count)
+            let progress = min(position.progress, CGFloat(CatalogPage.allCases.count - 1))
+            let direction: CGFloat = layoutDirection == .rightToLeft ? -1 : 1
+            Capsule().fill(theme.accent)
+                .frame(width: min(32, width * 0.6), height: 3)
+                .frame(width: width)
+                .offset(x: progress * width * direction)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+                .padding(.bottom, 2)
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
+struct CatalogFilterButton: View {
+    static let size: CGFloat = 48
+    static let inset: CGFloat = 14
+
+    @Bindable var selection: CatalogSelection
+    @State private var showFilter = false
+    @Environment(\.komiicTheme) private var theme
+
+    var body: some View {
         Button { showFilter = true } label: {
-            Image(systemName: filter == .all ? "line.3.horizontal.decrease" : "line.3.horizontal.decrease.circle.fill")
+            Image(systemName: selection.filter == .all ? "line.3.horizontal.decrease" : "line.3.horizontal.decrease.circle.fill")
                 .font(.system(size: 19, weight: .medium))
-                .foregroundStyle(filter == .all ? Color.primary : theme.accent)
-                .frame(width: filterButtonSize, height: filterButtonSize)
+                .foregroundStyle(selection.filter == .all ? Color.primary : theme.accent)
+                .frame(width: Self.size, height: Self.size)
                 .contentShape(RoundedRectangle(cornerRadius: 14))
         }
         .buttonStyle(.plain)
         .komiicGlass(cornerRadius: 14, interactive: true)
         .accessibilityLabel("筛选选项")
-        .accessibilityValue(filter.title)
-    }
-
-    private func select(_ destination: CatalogPage) {
-        guard scrollPage != destination else { return }
-        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.3)) {
-            scrollPage = destination
-        }
-    }
-}
-
-private enum CatalogScrollSpace { case pages, feed }
-
-private struct CatalogHeader<Actions: View>: View {
-    let position: CatalogPagerPosition
-    let collapsed: Bool
-    let select: (CatalogPage) -> Void
-    let actions: Actions
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    var body: some View {
-        ZStack {
-            if collapsed {
-                CatalogPageTitle(position: position)
-            }
-            HStack(spacing: 8) {
-                if collapsed {
-                    Spacer(minLength: 0)
-                } else {
-                    CatalogPageSelector(position: position, select: select)
-                        .frame(maxWidth: 360)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                actions
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 4)
-        .background {
-            Rectangle().fill(.regularMaterial)
-                .mask(alignment: .top) {
-                    LinearGradient(stops: [.init(color: .black, location: 0.78), .init(color: .clear, location: 1)],
-                                   startPoint: .top, endPoint: .bottom)
-                }
-                .ignoresSafeArea(.container, edges: .top)
-                .allowsHitTesting(false)
-        }
-        .animation(reduceMotion ? nil : .easeInOut(duration: 0.16), value: collapsed)
-    }
-}
-
-private struct CatalogPageTitle: View {
-    let position: CatalogPagerPosition
-
-    var body: some View {
-        Text(position.nearestPage.title)
-            .font(.tabHeader)
-            .lineLimit(1)
-            .accessibilityAddTraits(.isHeader)
-    }
-}
-
-private struct CatalogPageSelector: View {
-    let position: CatalogPagerPosition
-    let select: (CatalogPage) -> Void
-    @Environment(\.komiicTheme) private var theme
-    @Environment(\.layoutDirection) private var layoutDirection
-
-    var body: some View {
-        let current = position.nearestPage
-        HStack(spacing: 0) {
-            ForEach(CatalogPage.allCases) { item in
-                Button { select(item) } label: {
-                    Text(item.title)
-                        .font(.tabHeader.weight(current == item ? .semibold : .regular))
-                        .foregroundStyle(current == item ? theme.accent : Color.secondary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityAddTraits(current == item ? [.isSelected] : [])
-            }
-        }
-        .overlay {
-            GeometryReader { geometry in
-                let width = geometry.size.width / CGFloat(CatalogPage.allCases.count)
-                let direction: CGFloat = layoutDirection == .rightToLeft ? -1 : 1
-                Capsule().fill(theme.accent)
-                    .frame(width: min(32, width * 0.6), height: 3)
-                    .frame(width: width)
-                    .offset(x: position.progress * width * direction)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
-                    .padding(.bottom, 2)
-            }
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
+        .accessibilityValue(selection.filter.title)
+        .sheet(isPresented: $showFilter) {
+            FilterSheet(selection: $selection.filter)
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
         }
     }
 }

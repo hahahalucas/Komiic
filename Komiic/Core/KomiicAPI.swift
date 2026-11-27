@@ -94,14 +94,31 @@ struct KomiicAPI: Sendable {
             guard offset <= 0 else { return [] }
             return try await personalizedRecommendations(filter: filter)
         }
+        let isPopular = feed == .popular || feed == .monthlyPopular
+        let orderBy: String
+        switch feed {
+        case .all: orderBy = "DATE_UPDATED"
+        case .monthlyPopular: orderBy = "MONTH_VIEWS"
+        default: orderBy = "VIEWS"
+        }
         var pagination: [String: Any] = [
             "limit": Self.pageSize, "offset": max(0, offset), "asc": false,
-            "orderBy": feed == .popular ? "VIEWS" : "DATE_UPDATED"
+            "orderBy": orderBy
         ]
         if filter != .all { pagination["sexyLevel"] = filter.rawValue }
+        if let period = feed.recommendationPeriod {
+            let data: ComicList = try await perform("topRecommendedComics", query: """
+                query topRecommendedComics($period: RecommendationPeriod!, $pagination: Pagination!, $adult: Boolean, $contentType: ContentType) {
+                    comics: topRecommendedComics(period: $period, pagination: $pagination, adult: $adult, contentType: $contentType) {
+                        \(Self.comicFields)
+                    }
+                }
+                """, variables: ["period": period, "pagination": pagination, "adult": mode == .adult, "contentType": mode.rawValue])
+            return data.comics.compactMap { $0 }.map(normalized)
+        }
         let operation: String
         let arguments: String
-        if feed == .popular {
+        if isPopular {
             operation = "hotComics"
             arguments = "pagination: $pagination"
         } else if mode == .adult {
