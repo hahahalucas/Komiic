@@ -201,16 +201,34 @@ private struct TabRootScreen: View {
         .environment(\.openComicDirectory) { path.append($0) }
     }
 
+    private var tabTitle: String {
+        settings.contentMode == .adult ? "H 漫画 · \(tab.title)" : tab.title
+    }
+
     private func navigation(bottomInset: CGFloat) -> some View {
         NavigationStack(path: $path) {
             content(bottomInset: bottomInset)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(theme.canvas)
-                .navigationTitle(settings.contentMode == .adult ? "H 漫画 · \(tab.title)" : tab.title)
+                .navigationTitle(tabTitle)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar(tab == .home && path.isEmpty ? .hidden : .automatic, for: .navigationBar)
                 .toolbar {
                     if tab != .home {
+                        if path.isEmpty {
+                            let title = ToolbarItem(placement: .principal) {
+                                Text(tabTitle)
+                                    .font(.tabHeader)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.7)
+                                    .accessibilityAddTraits(.isHeader)
+                            }
+                            if #available(iOS 26.0, *) {
+                                title.sharedBackgroundVisibility(.hidden)
+                            } else {
+                                title
+                            }
+                        }
                         if #available(iOS 26.0, *) {
                             ToolbarItem(placement: .topBarTrailing) { topActions }
                                 .sharedBackgroundVisibility(.hidden)
@@ -270,7 +288,8 @@ private struct TabRootScreen: View {
 
     private func actionIcon(_ name: String) -> some View {
         Image(systemName: name)
-            .font(.system(size: 20, weight: .medium))
+            .font(.tabHeader.weight(.medium))
+            .imageScale(.medium)
             .foregroundStyle(theme.accent)
             .frame(width: 44, height: 44)
             .contentShape(Rectangle())

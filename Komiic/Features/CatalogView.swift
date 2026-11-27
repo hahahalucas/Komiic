@@ -325,7 +325,7 @@ private struct CatalogPageTitle: View {
 
     var body: some View {
         Text(position.nearestPage.title)
-            .font(.headline)
+            .font(.tabHeader)
             .lineLimit(1)
             .accessibilityAddTraits(.isHeader)
     }
@@ -343,7 +343,7 @@ private struct CatalogPageSelector: View {
             ForEach(CatalogPage.allCases) { item in
                 Button { select(item) } label: {
                     Text(item.title)
-                        .font(.subheadline.weight(current == item ? .semibold : .regular))
+                        .font(.tabHeader.weight(current == item ? .semibold : .regular))
                         .foregroundStyle(current == item ? theme.accent : Color.secondary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)

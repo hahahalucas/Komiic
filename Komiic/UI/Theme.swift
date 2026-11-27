@@ -62,6 +62,10 @@ extension EnvironmentValues {
     }
 }
 
+extension Font {
+    static let tabHeader = Font.headline
+}
+
 struct BrandMark: View {
     @Environment(\.komiicTheme) private var theme
 
