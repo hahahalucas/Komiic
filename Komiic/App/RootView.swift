@@ -30,11 +30,12 @@ private enum MenuRoute: Hashable { case blocked, warnings }
 
 struct RootView: View {
     private let headerHeight: CGFloat = 58
-    private let bottomBarInset: CGFloat = 64
+    private let actionHeight: CGFloat = 48
 
     @EnvironmentObject private var content: AppContentStore
     @EnvironmentObject private var library: LibraryStore
     @EnvironmentObject private var downloads: DownloadStore
+    @EnvironmentObject private var imageSources: ImageSourceStore
     @EnvironmentObject private var settings: ReaderSettings
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.komiicTheme) private var theme
@@ -59,9 +60,19 @@ struct RootView: View {
                               height: geometry.size.height + insets.top + insets.bottom)
             let isPad = UIDevice.current.userInterfaceIdiom == .pad
             let landscape = isPad && size.width > size.height
-            let topTabs = landscape || usesTopTabs(isPad: isPad)
-            navigation(landscape: landscape, topTabs: topTabs)
-                .environment(\.comicGridColumns, ComicGridColumns.count(for: size, isPad: isPad))
+            SystemTabs(selected: selected, hideTopScrollEdge: landscape, select: selectSystemTab) {
+                nativeContent(landscape: landscape, statusTop: insets.top)
+                    .environmentObject(content)
+                    .environmentObject(library)
+                    .environmentObject(downloads)
+                    .environmentObject(imageSources)
+                    .environmentObject(settings)
+                    .environment(\.scenePhase, scenePhase)
+                    .environment(\.komiicTheme, theme)
+                    .environment(\.comicGridColumns, ComicGridColumns.count(for: size, isPad: isPad))
+                    .tint(theme.accent)
+            }
+            .ignoresSafeArea(.container)
         }
         .ignoresSafeArea(.keyboard)
         .id(settings.contentMode)
@@ -132,28 +143,28 @@ struct RootView: View {
 
     private var isAtRoot: Bool { path.wrappedValue.isEmpty }
 
-    private func usesTopTabs(isPad: Bool) -> Bool {
-        if #available(iOS 18.0, *) { return isPad }
-        return false
+    @ViewBuilder private func nativeContent(landscape: Bool, statusTop: CGFloat) -> some View {
+        if #available(iOS 26.0, *) {
+            GeometryReader { safe in
+                GeometryReader { expanded in
+                    let inset = max(0, expanded.frame(in: .global).maxY - safe.frame(in: .global).maxY)
+                    navigation(landscape: landscape, statusTop: statusTop, bottomInset: inset)
+                }
+                .ignoresSafeArea(.container, edges: .bottom)
+            }
+        } else {
+            navigation(landscape: landscape, statusTop: statusTop, bottomInset: 0)
+                .toolbarBackground(.hidden, for: .tabBar)
+        }
     }
 
-    private func navigation(landscape: Bool, topTabs: Bool) -> some View {
-        let bottomInset = topTabs ? 0 : bottomBarInset
-        return NavigationStack(path: path) {
-            rootPages(landscape: landscape, bottomInset: bottomInset)
+    private func navigation(landscape: Bool, statusTop: CGFloat, bottomInset: CGFloat) -> some View {
+        NavigationStack(path: path) {
+            rootPages(landscape: landscape, statusTop: statusTop, bottomInset: bottomInset)
                 .background(theme.canvas)
                 .toolbar(isAtRoot ? .hidden : .automatic, for: .navigationBar)
                 .navigationDestination(for: Comic.self) { comic in
                     ComicDetailView(comic: comic, bottomInset: bottomInset, transparentHeader: landscape)
-                        .toolbar {
-                            if landscape {
-                                let tabs = ToolbarItem(placement: .principal) {
-                                    tabBar(icons: false, clear: true).frame(width: 320)
-                                }
-                                if #available(iOS 26.0, *) { tabs.sharedBackgroundVisibility(.hidden) }
-                                else { tabs }
-                            }
-                        }
                 }
                 .navigationDestination(for: BookshelfRoute.self) { ShelfDetailView(shelfID: $0.id) }
                 .navigationDestination(for: ComicAuthor.self) { AuthorView(author: $0) }
@@ -169,49 +180,47 @@ struct RootView: View {
                     }
                 }
         }
-        .safeAreaInset(edge: .top, spacing: 0) {
-            if topTabs && !landscape {
-                tabBar(icons: false, clear: false)
-                    .frame(maxWidth: 400)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 4)
-                    .background(.regularMaterial)
-            }
-        }
-        .overlay(alignment: .bottom) {
-            if !topTabs {
-                tabBar(icons: true, clear: false)
-                    .frame(maxWidth: 490)
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 4)
-            }
-        }
         .contentMargins(.bottom, bottomInset, for: .scrollContent)
         .contentMargins(.bottom, bottomInset, for: .scrollIndicators)
         .komiicScrollEdgeHidden(landscape, for: .top)
-        .komiicScrollEdgeHidden(!topTabs, for: .bottom)
+        .komiicScrollEdgeHidden(true, for: .bottom)
         .environment(\.openAuthor) { navigate(to: $0) }
         .environment(\.openComicDirectory) { navigate(to: $0) }
     }
 
-    private func rootPages(landscape: Bool, bottomInset: CGFloat) -> some View {
-        SlidingTabs(scrollPage: $scrollPage, position: pagerPosition, didSettle: didSettle) { page in
-            screen(page, landscape: landscape, bottomInset: bottomInset)
-        }
-        .overlay(alignment: .top) {
-            if landscape {
-                VStack(spacing: 0) {
-                    landscapeHeader
-                    if selected == .home, !catalogSelection.isCollapsed(catalogPage) {
-                        catalogSelector(collapsed: false)
-                            .frame(maxWidth: 360)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 12)
-                    }
+    @ViewBuilder private func rootPages(landscape: Bool, statusTop: CGFloat, bottomInset: CGFloat) -> some View {
+        if landscape {
+            GeometryReader { safe in
+                GeometryReader { expanded in
+                    let safeTop = max(0, safe.frame(in: .global).minY - expanded.frame(in: .global).minY)
+                    let actionsTop = statusTop + max(0, (safeTop - statusTop - actionHeight) / 2)
+                    let contentTop = max(safeTop, actionsTop + actionHeight + 4)
+                    pager(headerInset: contentTop, landscape: true, bottomInset: bottomInset)
+                        .overlay(alignment: .topLeading) {
+                            if selected == .home, !catalogSelection.isCollapsed(catalogPage) {
+                                catalogSelector(collapsed: false)
+                                    .frame(maxWidth: 360)
+                                    .padding(.horizontal, 12)
+                                    .padding(.top, contentTop)
+                            }
+                        }
+                        .overlay(alignment: .topTrailing) {
+                            topActions(clear: true)
+                                .padding(.trailing, 12)
+                                .padding(.top, actionsTop)
+                        }
                 }
-            } else {
-                regularHeader
+                .ignoresSafeArea(.container, edges: .top)
             }
+        } else {
+            pager(headerInset: headerHeight, landscape: false, bottomInset: bottomInset)
+                .overlay(alignment: .top) { regularHeader }
+        }
+    }
+
+    private func pager(headerInset: CGFloat, landscape: Bool, bottomInset: CGFloat) -> some View {
+        SlidingTabs(scrollPage: $scrollPage, position: pagerPosition, didSettle: didSettle) { page in
+            screen(page, headerInset: headerInset, landscape: landscape, bottomInset: bottomInset)
         }
         .overlay(alignment: .bottomTrailing) {
             if selected == .home {
@@ -222,16 +231,17 @@ struct RootView: View {
         }
     }
 
-    @ViewBuilder private func screen(_ page: AppPage, landscape: Bool, bottomInset: CGFloat) -> some View {
+    @ViewBuilder private func screen(_ page: AppPage, headerInset: CGFloat, landscape: Bool,
+                                     bottomInset: CGFloat) -> some View {
         let visible = selected == page.tab && isAtRoot
         switch page {
         case .catalog(let item):
             CatalogPageContent(page: item, active: visible && catalogPage == item,
-                               headerInset: headerHeight + (landscape ? 44 : 0),
+                               headerInset: headerInset + (landscape ? 44 : 0),
                                bottomInset: bottomInset, selection: catalogSelection)
         case .favorites:
             FavoritesView()
-                .contentMargins(.top, headerHeight, for: .scrollContent)
+                .contentMargins(.top, headerInset, for: .scrollContent)
                 .contentMargins(.bottom, bottomInset, for: .scrollContent)
         case .library:
             VStack(spacing: 0) {
@@ -243,14 +253,14 @@ struct RootView: View {
                 .padding(.horizontal, 18).padding(.vertical, 12)
                 if librarySection == .shelves { ShelvesView() } else { BookmarksView() }
             }
-            .padding(.top, headerHeight)
+            .padding(.top, headerInset)
             .contentMargins(.bottom, bottomInset, for: .scrollContent)
         case .account:
             AccountView(onOpenFavorites: { open(.favorites) },
                         onOpenBookmarks: { librarySection = .bookmarks; open(.library) },
                         onOpenShelves: { librarySection = .shelves; open(.library) },
                         isVisible: visible)
-                .contentMargins(.top, headerHeight, for: .scrollContent)
+                .contentMargins(.top, headerInset, for: .scrollContent)
                 .contentMargins(.bottom, bottomInset, for: .scrollContent)
         }
     }
@@ -290,32 +300,9 @@ struct RootView: View {
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.16), value: collapsed)
     }
 
-    private var landscapeHeader: some View {
-        GeometryReader { geometry in
-            if geometry.size.width >= 650 {
-                tabBar(icons: false, clear: true)
-                    .frame(maxWidth: 400)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .overlay(alignment: .trailing) { topActions(clear: true) }
-            } else {
-                HStack(spacing: 12) {
-                    tabBar(icons: false, clear: true).frame(maxWidth: .infinity)
-                    topActions(clear: true)
-                }
-                .frame(maxHeight: .infinity)
-            }
-        }
-        .padding(.horizontal, 12)
-        .frame(height: headerHeight)
-    }
-
     private func catalogSelector(collapsed: Bool) -> some View {
         CatalogPageSelector(page: catalogPage, position: pagerPosition, selection: catalogSelection,
                             collapsed: collapsed, select: { move(to: .catalog($0)) })
-    }
-
-    private func tabBar(icons: Bool, clear: Bool) -> some View {
-        AppTabBar(selected: selected, icons: icons, clear: clear, select: selectTab)
     }
 
     @ViewBuilder private func topActions(clear: Bool) -> some View {
@@ -362,7 +349,7 @@ struct RootView: View {
         Image(systemName: name)
             .font(.system(size: min(actionIconSize, 34), weight: .medium))
             .foregroundStyle(theme.accent)
-            .frame(width: 50, height: 48)
+            .frame(width: 50, height: actionHeight)
             .contentShape(Rectangle())
     }
 
@@ -380,25 +367,28 @@ struct RootView: View {
         }
     }
 
-    private func selectTab(_ tab: AppTab) {
+    private func selectSystemTab(_ tab: AppTab) {
         guard tab != selected else { return }
-        let target: AppPage
-        switch tab {
-        case .home: target = .catalog(catalogPage)
-        case .favorites: target = .favorites
-        case .library: target = .library
-        case .account: target = .account
-        }
-        if isAtRoot { move(to: target) }
-        else {
-            scrollPage = target
+        var transaction = Transaction(animation: nil)
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            scrollPage = page(for: tab)
             selected = tab
+        }
+    }
+
+    private func page(for tab: AppTab) -> AppPage {
+        switch tab {
+        case .home: return .catalog(catalogPage)
+        case .favorites: return .favorites
+        case .library: return .library
+        case .account: return .account
         }
     }
 
     private func open(_ tab: AppTab) {
         paths[tab] = NavigationPath()
-        selectTab(tab)
+        move(to: page(for: tab))
     }
 
     private func navigate(to route: some Hashable) {
@@ -414,40 +404,5 @@ struct RootView: View {
         var homePath = NavigationPath()
         homePath.append(comic)
         paths[.home] = homePath
-    }
-}
-
-private struct AppTabBar: View {
-    let selected: AppTab
-    let icons: Bool
-    let clear: Bool
-    let select: (AppTab) -> Void
-    @Environment(\.komiicTheme) private var theme
-
-    var body: some View {
-        HStack(spacing: 2) {
-            ForEach(AppTab.allCases) { tab in
-                Button { select(tab) } label: {
-                    VStack(spacing: 2) {
-                        if icons {
-                            Image(systemName: tab.symbol).font(.system(size: 18, weight: .semibold))
-                        }
-                        Text(tab.title)
-                            .font(icons ? .caption2.weight(.semibold) : .subheadline.weight(.semibold))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.7)
-                    }
-                    .foregroundStyle(tab == selected ? theme.accent : Color.primary)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: icons ? 50 : 44)
-                    .background(tab == selected ? theme.accentWash : Color.clear, in: Capsule())
-                    .contentShape(Capsule())
-                }
-                .accessibilityAddTraits(tab == selected ? [.isSelected] : [])
-            }
-        }
-        .padding(4)
-        .buttonStyle(.plain)
-        .komiicGlass(cornerRadius: 28, interactive: true, clear: clear)
     }
 }

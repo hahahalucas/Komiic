@@ -7,8 +7,11 @@ enum ReaderCanvasMode: Equatable {
     var isChapter: Bool { if case .chapter = self { return true }; return false }
 }
 
-enum ReaderLandscapeSizing: String {
+enum ReaderLandscapeSizing: String, CaseIterable, Identifiable {
     case original, fullScreen
+
+    var id: Self { self }
+    var title: String { self == .original ? "原始比例" : "全屏" }
 }
 
 /// All page frames are expressed at 1x; one native canvas scales them together.
@@ -44,23 +47,17 @@ struct ReaderCanvasLayout: Equatable {
         case .spread(let slots):
             if let landscapeSizing {
                 let indices = slots.compactMap { $0 }.filter { pages.indices.contains($0) }
-                switch landscapeSizing {
-                case .original:
-                    let aspectRatios = indices.map(ratio)
-                    let totalRatio = aspectRatios.reduce(0, +)
-                    let pageHeight = totalRatio > 0 ? min(height, width / totalRatio) : height
-                    var x = max(0, (width - pageHeight * totalRatio) / 2)
-                    for (index, aspectRatio) in zip(indices, aspectRatios) {
-                        let pageWidth = pageHeight * aspectRatio
-                        let frame = CGRect(x: x, y: (height - pageHeight) / 2, width: pageWidth, height: pageHeight)
-                        rows.append(Item(id: index, frame: frame))
-                        x += pageWidth
-                    }
-                case .fullScreen:
-                    let slotWidth = width / CGFloat(max(1, indices.count))
-                    rows = indices.enumerated().map { slot, index in
-                        Item(id: index, frame: CGRect(x: CGFloat(slot) * slotWidth, y: 0, width: slotWidth, height: height))
-                    }
+                let aspectRatios = indices.map(ratio)
+                let totalRatio = aspectRatios.reduce(0, +)
+                let widthFittedHeight = totalRatio > 0 ? width / totalRatio : height
+                let pageHeight = landscapeSizing == .original
+                    ? min(height, widthFittedHeight) : max(height, widthFittedHeight)
+                var x = (width - pageHeight * totalRatio) / 2
+                for (index, aspectRatio) in zip(indices, aspectRatios) {
+                    let pageWidth = pageHeight * aspectRatio
+                    let frame = CGRect(x: x, y: (height - pageHeight) / 2, width: pageWidth, height: pageHeight)
+                    rows.append(Item(id: index, frame: frame))
+                    x += pageWidth
                 }
             } else {
                 let slotWidth = width / CGFloat(max(1, slots.count))

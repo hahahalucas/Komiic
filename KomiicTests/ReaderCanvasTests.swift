@@ -31,6 +31,37 @@ final class ReaderCanvasTests: XCTestCase {
         }
     }
 
+    func testIPadOriginalSpreadCentersAcrossTheFullViewport() {
+        let viewport = CGSize(width: 1554, height: 1080)
+        let pages = [
+            ComicPage(id: "wide", kid: "wide", width: 900, height: 1000),
+            ComicPage(id: "narrow", kid: "narrow", width: 700, height: 1000)
+        ]
+        for slots in [[1, 0], [nil, 0]] as [[Int?]] {
+            let layout = ReaderCanvasLayout(pages: pages, viewport: viewport, mode: .spread(slots), landscapeSizing: .original)
+            let artwork = layout.items.reduce(CGRect.null) { $0.union($1.frame) }
+            XCTAssertEqual(layout.items.map(\.id), slots.compactMap { $0 })
+            XCTAssertEqual(artwork.minX, viewport.width - artwork.maxX, accuracy: 0.01)
+            XCTAssertEqual(artwork.minY, viewport.height - artwork.maxY, accuracy: 0.01)
+            for item in layout.items {
+                let page = pages[item.id]
+                XCTAssertEqual(item.frame.width / item.frame.height, CGFloat(page.width) / CGFloat(page.height), accuracy: 0.001)
+            }
+        }
+    }
+
+    func testIPadFullScreenSpreadCoversBothAxesAndKeepsArtworkCentered() {
+        let viewport = CGSize(width: 1554, height: 1080)
+        let pages = [ComicPage(id: "page", kid: "page", width: 700, height: 1000)]
+        let layout = ReaderCanvasLayout(pages: pages, viewport: viewport, mode: .spread([nil, 0]), landscapeSizing: .fullScreen)
+        let frame = layout.items[0].frame
+        XCTAssertGreaterThanOrEqual(frame.width + 0.01, viewport.width)
+        XCTAssertGreaterThanOrEqual(frame.height + 0.01, viewport.height)
+        XCTAssertEqual(frame.midX, viewport.width / 2, accuracy: 0.01)
+        XCTAssertEqual(frame.midY, viewport.height / 2, accuracy: 0.01)
+        XCTAssertEqual(frame.width / frame.height, 0.7, accuracy: 0.001)
+    }
+
     func testPinchingStopsAtOriginalScaleInBothModes() {
         for mode in [ReaderCanvasMode.chapter, .spread([0, 1])] {
             let controller = makeController(mode: mode)

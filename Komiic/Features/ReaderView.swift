@@ -13,6 +13,7 @@ struct ReaderView: View {
     @Environment(\.komiicTheme) private var theme
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.layoutDirection) private var layoutDirection
     @AppStorage("reader.iPadLandscapeSizing") private var ipadLandscapeSizing = ReaderLandscapeSizing.original
     @State private var pages: [ComicPage] = []
     @State private var loading = true
@@ -45,8 +46,8 @@ struct ReaderView: View {
     var body: some View {
         GeometryReader { safeGeometry in
             GeometryReader { geometry in
-                let landscapeSizing = UIDevice.current.userInterfaceIdiom == .pad && geometry.size.width > geometry.size.height
-                    ? ipadLandscapeSizing : nil
+                let landscapeFrame = landscapeViewport(safe: safeGeometry, expanded: geometry)
+                let viewportSize = landscapeFrame?.size ?? geometry.size
                 ZStack {
                     (settings.einkMode.enabled ? Color.white : Color.black).ignoresSafeArea()
                     if loading {
@@ -61,32 +62,38 @@ struct ReaderView: View {
                         EmptyState(symbol: "doc", title: "本章暂无页面", message: "可以稍后重试，或在官网查看。",
                                    actionTitle: "返回", action: { dismiss() }).foregroundStyle(foreground)
                     } else {
-                        if !doublePage {
-                            readerCanvas()
-                        } else {
-                            TabView(selection: Binding(get: { spreadLayout.start(for: currentPage) }, set: { move(to: $0) })) {
-                                ForEach(spreadLayout.starts, id: \.self) { index in
-                                    readerCanvas(spread: spreadLayout.slots(for: index), landscapeSizing: landscapeSizing)
-                                        .tag(index)
+                        if doublePage || landscapeFrame != nil {
+                            Group {
+                                if let frame = landscapeFrame {
+                                    landscapeSpreadPager(size: frame.size)
+                                        .position(x: frame.midX, y: frame.midY)
+                                } else {
+                                    TabView(selection: Binding(get: { spreadLayout.start(for: currentPage) }, set: { move(to: $0) })) {
+                                        ForEach(spreadLayout.starts, id: \.self) { index in
+                                            readerCanvas(spread: spreadLayout.slots(for: index)).tag(index)
+                                        }
+                                    }
+                                    .tabViewStyle(.page(indexDisplayMode: .never))
                                 }
                             }
-                            .tabViewStyle(.page(indexDisplayMode: .never))
                             .environment(\.layoutDirection, settings.readingDirection == .left ? .rightToLeft : .leftToRight)
                             .onChange(of: currentPage) { _, _ in saveProgress() }
                             .simultaneousGesture(endOfChapterGesture(atEnd: spreadLayout.next(from: currentPage) == spreadLayout.start(for: currentPage)))
+                        } else {
+                            readerCanvas()
                         }
                         if controls {
                             readerControls(topInset: ReaderChromePlacement.topPadding(
                                 safeAreaTop: safeGeometry.safeAreaInsets.top,
-                                isPhone: UIDevice.current.userInterfaceIdiom == .phone), landscapeSizing: landscapeSizing)
+                                isPhone: UIDevice.current.userInterfaceIdiom == .phone), offersLandscapeSizing: landscapeFrame != nil)
                                 .padding(.bottom, geometry.safeAreaInsets.bottom)
                         }
                     }
                 }
                 .statusBarHidden(true)
                 .preferredColorScheme(settings.einkMode.enabled ? .light : .dark)
-                .onAppear { updateSpread(size: geometry.size) }
-                .onChange(of: geometry.size) { _, size in updateSpread(size: size) }
+                .onAppear { updateSpread(size: viewportSize) }
+                .onChange(of: viewportSize) { _, size in updateSpread(size: size) }
             }
             .ignoresSafeArea()
         }
@@ -105,6 +112,43 @@ struct ReaderView: View {
             if settings.cachePolicy == .afterReading { downloads.clearCache(chapterID: currentChapter.id) }
         }
         .onChange(of: settings.readingDirection) { _, _ in resetZoom() }
+    }
+
+    private func landscapeViewport(safe: GeometryProxy, expanded: GeometryProxy) -> CGRect? {
+        guard UIDevice.current.userInterfaceIdiom == .pad else { return nil }
+        let rect = safe.frame(in: .global)
+        let inset = safe.safeAreaInsets
+        let left = layoutDirection == .rightToLeft ? inset.trailing : inset.leading
+        let full = CGRect(x: rect.minX - left, y: rect.minY - inset.top,
+                          width: rect.width + inset.leading + inset.trailing,
+                          height: rect.height + inset.top + inset.bottom)
+        let expandedFrame = expanded.frame(in: .global)
+        let viewport = full.union(expandedFrame)
+        guard viewport.width > viewport.height else { return nil }
+        return viewport.offsetBy(dx: -expandedFrame.minX, dy: -expandedFrame.minY)
+    }
+
+    private func landscapeSpreadPager(size: CGSize) -> some View {
+        let selection = Binding<Int?>(get: { spreadLayout.start(for: currentPage) }, set: { index in
+            if let index, index != spreadLayout.start(for: currentPage) { move(to: index) }
+        })
+        return ScrollView(.horizontal) {
+            LazyHStack(spacing: 0) {
+                ForEach(spreadLayout.starts, id: \.self) { index in
+                    readerCanvas(spread: spreadLayout.slots(for: index), landscapeSizing: ipadLandscapeSizing)
+                        .frame(width: size.width, height: size.height)
+                        .clipped()
+                        .id(index)
+                }
+            }
+            .scrollTargetLayout()
+        }
+        .scrollIndicators(.hidden)
+        .contentMargins(.all, 0, for: .scrollContent)
+        .scrollTargetBehavior(.paging)
+        .scrollPosition(id: selection, anchor: .center)
+        .frame(width: size.width, height: size.height)
+        .ignoresSafeArea(.container)
     }
 
     private func updateSpread(size: CGSize) {
@@ -216,8 +260,7 @@ struct ReaderView: View {
                 return AnyView(ReaderPageImage(page: pages[index], chapterID: chapterID,
                     baseURL: KomiicAPI(mode: readingContentMode ?? settings.contentMode).baseURL,
                     allowNetwork: !isOffline,
-                    shouldLoad: spread == nil || abs(index - currentPage) <= spreadLayout.step + 1,
-                    fillsFrame: landscapeSizing == .fullScreen)
+                    shouldLoad: spread == nil || abs(index - currentPage) <= spreadLayout.step + 1)
                     .id("\(chapterID):\(pages[index].id)")
                     .environmentObject(downloads).environmentObject(settings))
             })
@@ -225,7 +268,7 @@ struct ReaderView: View {
             .onDisappear { updateZoom(pageID: scope, active: false) }
     }
 
-    private func readerControls(topInset: CGFloat, landscapeSizing: ReaderLandscapeSizing?) -> some View {
+    private func readerControls(topInset: CGFloat, offersLandscapeSizing: Bool) -> some View {
         VStack(spacing: 18) {
             HStack(spacing: 8) {
                 Button { dismiss() } label: {
@@ -239,21 +282,7 @@ struct ReaderView: View {
                     Text(currentChapter.displayTitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
                 Spacer(minLength: 0)
-                if let landscapeSizing {
-                    Button {
-                        resetZoom()
-                        ipadLandscapeSizing = landscapeSizing == .original ? .fullScreen : .original
-                    } label: {
-                        Image(systemName: landscapeSizing == .original
-                              ? "arrow.up.left.and.arrow.down.right" : "arrow.down.right.and.arrow.up.left")
-                            .font(.body.weight(.semibold))
-                            .frame(width: 44, height: 44)
-                            .contentShape(Circle())
-                    }
-                    .accessibilityLabel(landscapeSizing == .original ? "切换至全屏" : "切换至原始比例")
-                    .accessibilityValue(landscapeSizing == .original ? "原始比例" : "全屏")
-                }
-                readerMenu
+                readerMenu(offersLandscapeSizing: offersLandscapeSizing)
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 6)
@@ -272,10 +301,24 @@ struct ReaderView: View {
         .transition(.opacity)
     }
 
-    private var readerMenu: some View {
+    private func readerMenu(offersLandscapeSizing: Bool) -> some View {
         Menu {
             Picker("阅读方向", selection: $settings.readingDirection) {
                 ForEach(ReadingDirection.allCases) { Text($0.title).tag($0) }
+            }
+            if offersLandscapeSizing {
+                Divider()
+                ForEach(ReaderLandscapeSizing.allCases) { sizing in
+                    Button {
+                        guard ipadLandscapeSizing != sizing else { return }
+                        resetZoom()
+                        ipadLandscapeSizing = sizing
+                    } label: {
+                        if ipadLandscapeSizing == sizing { Label(sizing.title, systemImage: "checkmark") }
+                        else { Text(sizing.title) }
+                    }
+                }
+                Divider()
             }
             Button(library.isBookmarked(chapterID: currentChapter.id, page: currentPage) ? "移除当前页书签" : "添加当前页书签", systemImage: "bookmark") {
                 library.toggleBookmark(comic: comic, chapter: currentChapter, page: currentPage, mode: readingContentMode)
@@ -403,7 +446,6 @@ private struct ReaderPageImage: View {
     let baseURL: URL
     let allowNetwork: Bool
     var shouldLoad = true
-    var fillsFrame = false
     @EnvironmentObject private var downloads: DownloadStore
     @EnvironmentObject private var settings: ReaderSettings
     @State private var image: UIImage?
@@ -412,12 +454,27 @@ private struct ReaderPageImage: View {
     private var ratio: CGFloat { page.width > 0 && page.height > 0 ? CGFloat(page.width) / CGFloat(page.height) : 0.7 }
 
     var body: some View {
-        Group {
-            if fillsFrame { surface }
-            else { surface.aspectRatio(ratio, contentMode: .fit) }
+        ZStack {
+            if let image {
+                Image(uiImage: image).resizable().scaledToFit()
+                    .grayscale(settings.einkMode.enabled ? 1 : 0)
+                    .brightness(settings.dimImages ? -0.16 : 0)
+            } else {
+                Rectangle().fill(settings.einkMode.enabled ? Color(white: 0.96) : Color(white: 0.10))
+                if let error {
+                    VStack(spacing: 14) {
+                        Image(systemName: "photo.badge.exclamationmark").font(.title2)
+                        Text(error).font(.caption).multilineTextAlignment(.center).frame(maxWidth: 280)
+                        Button("重新载入这一页") { retry += 1 }.buttonStyle(.bordered)
+                    }.foregroundStyle(settings.einkMode.enabled ? .black : .white).padding(20)
+                } else {
+                    ProgressView().tint(settings.einkMode.enabled ? .black : .white)
+                }
+            }
         }
+        .aspectRatio(ratio, contentMode: .fit)
         .accessibilityLabel("漫画页面")
-        .accessibilityHint(fillsFrame ? "切换原始比例可查看整页" : "双指放大，收拢还原至原始比例")
+        .accessibilityHint("双指放大，收拢还原至原始比例")
         .task(id: "\(page.id)-\(retry)-\(shouldLoad)") {
             guard shouldLoad, image == nil else { return }
             do {
@@ -432,38 +489,5 @@ private struct ReaderPageImage: View {
             } catch let urlError as URLError where urlError.code == .cancelled {
             } catch { self.error = error.localizedDescription }
         }
-    }
-
-    private var surface: some View {
-        ZStack {
-            if let image {
-                if fillsFrame {
-                    GeometryReader { viewport in
-                        pageImage(image, scaling: .fill)
-                            .frame(width: viewport.size.width, height: viewport.size.height)
-                            .clipped()
-                    }
-                } else {
-                    pageImage(image, scaling: .fit)
-                }
-            } else {
-                Rectangle().fill(settings.einkMode.enabled ? Color(white: 0.96) : Color(white: 0.10))
-                if let error {
-                    VStack(spacing: 14) {
-                        Image(systemName: "photo.badge.exclamationmark").font(.title2)
-                        Text(error).font(.caption).multilineTextAlignment(.center).frame(maxWidth: 280)
-                        Button("重新载入这一页") { retry += 1 }.buttonStyle(.bordered)
-                    }.foregroundStyle(settings.einkMode.enabled ? .black : .white).padding(20)
-                } else {
-                    ProgressView().tint(settings.einkMode.enabled ? .black : .white)
-                }
-            }
-        }
-    }
-
-    private func pageImage(_ image: UIImage, scaling: ContentMode) -> some View {
-        Image(uiImage: image).resizable().aspectRatio(contentMode: scaling)
-            .grayscale(settings.einkMode.enabled ? 1 : 0)
-            .brightness(settings.dimImages ? -0.16 : 0)
     }
 }

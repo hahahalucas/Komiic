@@ -125,6 +125,9 @@ struct ReaderCanvasView: UIViewControllerRepresentable {
         let requested = self.requestID != requestID
         let reset = self.resetID != resetID
         let footerChanged = self.footer != footer
+        if (self.landscapeSizing == nil) != (landscapeSizing == nil) {
+            host.safeAreaRegions = landscapeSizing == nil ? .all : []
+        }
         self.pages = pages; self.scopeID = scopeID; self.mode = mode; self.targetPage = targetPage
         self.landscapeSizing = landscapeSizing
         self.requestID = requestID; self.resetID = resetID; self.spacing = spacing; self.footer = footer
