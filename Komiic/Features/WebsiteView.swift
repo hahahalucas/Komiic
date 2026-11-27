@@ -51,6 +51,56 @@ struct WebsiteView: View {
     }
 }
 
+struct ImageAccountLoginView: View {
+    let slot: ImageAccountSlot
+    let mode: ComicContentMode
+    let connect: ([HTTPCookie]) async throws -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var websiteDataStore = WKWebsiteDataStore.nonPersistent()
+    @State private var loading = true
+    @State private var webError: String?
+    @State private var connectionError: String?
+    @State private var reloadID = UUID()
+    @State private var saving = false
+
+    var body: some View {
+        NavigationStack {
+            ZStack(alignment: .top) {
+                OfficialWebView(url: mode.baseURL.appendingPathComponent("login"), loading: $loading,
+                                errorMessage: $webError, websiteDataStore: websiteDataStore)
+                    .id(reloadID)
+                if loading || saving { ProgressView().padding(10).background(.regularMaterial, in: Capsule()) }
+                if let webError {
+                    EmptyState(symbol: "wifi.exclamationmark", title: "网页未能载入", message: webError,
+                               actionTitle: "重试", action: { self.webError = nil; reloadID = UUID() })
+                }
+            }
+            .navigationTitle("登录\(slot.title)").navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() }.disabled(saving) }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("完成") {
+                        saving = true
+                        Task {
+                            defer { saving = false }
+                            do {
+                                let cookies = await websiteDataStore.httpCookieStore.allCookies()
+                                try await connect(cookies)
+                                dismiss()
+                            } catch { connectionError = error.localizedDescription }
+                        }
+                    }
+                    .disabled(saving || loading || webError != nil)
+                }
+            }
+        }
+        .interactiveDismissDisabled(saving)
+        .alert("未能连接账号", isPresented: Binding(get: { connectionError != nil }, set: { if !$0 { connectionError = nil } })) {
+            Button("好", role: .cancel) { connectionError = nil }
+        } message: { Text(connectionError ?? "") }
+    }
+}
+
 @MainActor
 enum WebCookieBridge {
     private static var clearingSessions = 0
@@ -149,12 +199,13 @@ private struct OfficialWebView: UIViewRepresentable {
     let url: URL
     @Binding var loading: Bool
     @Binding var errorMessage: String?
+    var websiteDataStore: WKWebsiteDataStore? = nil
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     func makeUIView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
-        configuration.websiteDataStore = .default()
+        configuration.websiteDataStore = websiteDataStore ?? .default()
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
         webView.allowsBackForwardNavigationGestures = true
@@ -173,7 +224,7 @@ private struct OfficialWebView: UIViewRepresentable {
         }
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             parent.loading = false
-            Task { await WebCookieBridge.synchronize() }
+            if parent.websiteDataStore == nil { Task { await WebCookieBridge.synchronize() } }
         }
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
             parent.loading = false
@@ -190,7 +241,7 @@ private struct OfficialWebView: UIViewRepresentable {
             if url.scheme == "https", let host = url.host,
                host == "komiic.cc" || host.hasSuffix(".komiic.cc") || host == "komiic.com" || host.hasSuffix(".komiic.com") {
                 decisionHandler(.allow)
-            } else if url.scheme == "https" || url.scheme == "http" {
+            } else if parent.websiteDataStore == nil && (url.scheme == "https" || url.scheme == "http") {
                 UIApplication.shared.open(url)
                 decisionHandler(.cancel)
             } else {

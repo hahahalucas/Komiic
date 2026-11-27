@@ -529,6 +529,79 @@ final class KomiicAPITests: XCTestCase {
         XCTAssertEqual(chapters.map(\.id), ["2", "10", "1"])
     }
 
+    @MainActor
+    func testImageSourcesKeepTheirOwnSessionsAndSwitchAfterQuotaExhaustion() async throws {
+        let mode = ComicContentMode.general
+        let owner = ImageSourceOwner(id: "main", sessionScope: "primary-scope")
+        let mainQuota = ImageReadingQuota(usage: 800, limit: 800, resetAt: Date().addingTimeInterval(14_400))
+        let originalCookies = SessionCookieStore.credentialSignature(HTTPCookieStorage.shared.cookies ?? [], mode: mode)
+        let calls = LockedBox<[String]>([])
+        StubURLProtocol.handler = { request in
+            if request.url?.path == "/test-page" {
+                XCTAssertFalse(request.httpShouldHandleCookies)
+                XCTAssertNil(request.value(forHTTPHeaderField: "Cookie"))
+                return (200, "image/png", Data([1, 2, 3]))
+            }
+            let body = try XCTUnwrap(try JSONSerialization.jsonObject(with: requestBody(request)) as? [String: Any])
+            let operation = try XCTUnwrap(body["operationName"] as? String)
+            calls.update { $0.append(operation) }
+            let matchingCalls = calls.value.filter { $0 == operation }.count
+            if operation == "getImageLimit" {
+                let quota: [String: Any] = ["usage": matchingCalls * 12, "limit": 800, "resetInSeconds": matchingCalls * 3_600]
+                let data: [String: Any] = ["account": ["id": "secondary-\(matchingCalls)"], "getImageLimit": quota]
+                return (200, "application/json", try JSONSerialization.data(withJSONObject: ["data": data]))
+            }
+            if operation == "getImageTicket", matchingCalls == 1 { return (402, "application/json", Data()) }
+            return (200, "application/json", Data(#"{"data":{"ticket":{"url":"https://images.example.invalid/test-page","ticket":"test-ticket","kid":"page"}}}"#.utf8))
+        }
+
+        var archive: Data?
+        var cookieStores: [HTTPCookieStorage] = []
+        var primaryError = KomiicError.rateLimited
+        var primaryCalls = 0
+        let store = ImageSourceStore(primary: { _ in (owner, mainQuota) },
+            persistence: SessionPersistence(load: { archive }, save: { archive = $0 }, remove: { archive = nil }),
+            sessionConfiguration: {
+                let configuration = URLSessionConfiguration.ephemeral
+                configuration.protocolClasses = [StubURLProtocol.self]
+                if let storage = configuration.httpCookieStorage { cookieStores.append(storage) }
+                return configuration
+            }, imageSession: session, primaryImage: { _, _ in
+                primaryCalls += 1
+                throw primaryError
+            })
+        defer { store.clear() }
+        for slot in ImageAccountSlot.allCases {
+            let cookie = try XCTUnwrap(HTTPCookie(properties: [.domain: "komiic.cc", .path: "/", .secure: "TRUE",
+                .name: "komiic-access-token", .value: "fixture-\(slot.rawValue)"]))
+            try await store.connect(slot, mode: mode, ownerID: owner.id, cookies: [cookie])
+        }
+        XCTAssertEqual(cookieStores.map { $0.cookies(for: mode.baseURL)?.first?.value }, ["fixture-1", "fixture-2"])
+        XCTAssertEqual(SessionCookieStore.credentialSignature(HTTPCookieStorage.shared.cookies ?? [], mode: mode), originalCookies)
+        let quotas = try ImageAccountSlot.allCases.map { slot in
+            try XCTUnwrap(store.status(for: slot, mode: mode, ownerID: owner.id).quota)
+        }
+        let combined = try XCTUnwrap(ImageReadingQuota.combined([mainQuota] + quotas))
+        XCTAssertEqual(combined.usage, 836)
+        XCTAssertEqual(combined.limit, 2_400)
+        XCTAssertEqual(combined.resetAt, quotas[0].resetAt)
+
+        let page = ComicPage(id: "test-page", kid: "page")
+        do {
+            _ = try await store.imageData(for: page, baseURL: mode.baseURL)
+            XCTFail("A rate limit must stop before any other account is tried")
+        } catch KomiicError.rateLimited {}
+        XCTAssertEqual(calls.value, ["getImageLimit", "getImageLimit"])
+
+        primaryError = .imageQuotaExceeded
+        for _ in 0..<2 {
+            let image = try await store.imageData(for: page, baseURL: mode.baseURL)
+            XCTAssertEqual(image, Data([1, 2, 3]))
+        }
+        XCTAssertEqual(primaryCalls, 2)
+        XCTAssertEqual(calls.value, ["getImageLimit", "getImageLimit", "getImageTicket", "getImageTicket", "getImageTicket"])
+    }
+
     func testSavedRefreshCookieRenewsSessionWhenAccessCookieIsMissing() async throws {
         let domain = "restored-session-\(UUID().uuidString.lowercased()).invalid"
         let source = URL(string: "https://\(domain)")!

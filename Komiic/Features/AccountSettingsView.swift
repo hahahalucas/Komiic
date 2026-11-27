@@ -24,6 +24,11 @@ struct AccountView: View {
 }
 
 private struct AccountContentView: View {
+    private enum ImageSheet: String, Identifiable {
+        case accounts, quotas
+        var id: Self { self }
+    }
+
     var onOpenFavorites: (() -> Void)?
     var onOpenBookmarks: (() -> Void)?
     var onOpenShelves: (() -> Void)?
@@ -32,10 +37,12 @@ private struct AccountContentView: View {
     @EnvironmentObject private var library: LibraryStore
     @EnvironmentObject private var settings: ReaderSettings
     @EnvironmentObject private var content: AppContentStore
+    @EnvironmentObject private var imageSources: ImageSourceStore
     @Environment(\.komiicTheme) private var theme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.scenePhase) private var scenePhase
     @State private var website: WebDestination?
+    @State private var imageSheet: ImageSheet?
     @State private var showingMessages = false
     @State private var messagesRefresh = 0
     @State private var signingOut = false
@@ -87,21 +94,30 @@ private struct AccountContentView: View {
         .navigationTitle("账号").navigationBarTitleDisplayMode(.inline)
         .scrollBounceBehavior(.always, axes: .vertical)
         .refreshable {
-            await loadProfile()
+            await loadDashboard()
             messagesRefresh += 1
         }
         .task(id: "\(settings.contentMode.rawValue):\(content.revision):\(dashboardActive)") {
-            if dashboardActive { await loadProfile(force: false) }
+            if dashboardActive { await loadDashboard(force: false) }
         }
         .onChange(of: content.revision) { _, _ in showingMessages = false }
         .sheet(item: $website) { destination in
             WebsiteView(url: destination.url, title: destination.title, onClose: {
-                Task { await loadProfile() }
+                Task { await loadDashboard() }
             })
+        }
+        .sheet(item: $imageSheet) { sheet in
+            if let profile {
+                switch sheet {
+                case .accounts: ImageAccountManagementView(mode: settings.contentMode, ownerID: profile.id)
+                case .quotas: ImageQuotaDetailsView(mode: settings.contentMode, ownerID: profile.id, model: model)
+                }
+            }
         }
         .confirmationDialog("退出此 App 中的 Komiic 官网会话？本机阅读资料会保留。", isPresented: $signingOut, titleVisibility: .visible) {
             Button("退出登录", role: .destructive) {
                 content.resetAccounts()
+                imageSources.clear()
                 settings.cancelWarningSync()
                 library.resetOfficialSession()
                 Task {
@@ -140,41 +156,50 @@ private struct AccountContentView: View {
         }
         .padding(20).frame(maxWidth: .infinity, alignment: .leading)
         .background(theme.accentWash, in: RoundedRectangle(cornerRadius: 20))
+        .contentShape(Rectangle())
+        .onLongPressGesture(perform: openImageAccounts)
+        .accessibilityAction(named: Text("管理副账号"), openImageAccounts)
     }
 
     private func officialStats(_ profile: KomiicAccountProfile) -> some View {
         LazyVGrid(columns: statColumns, alignment: .leading, spacing: 12) {
             stat("漫画已读", value: profile.readingStats?.comicsRead, symbol: "book.fill")
             stat("章节已读", value: profile.readingStats?.chaptersRead, symbol: "book.pages")
-            quotaCard(profile.imageQuota)
+            quotaCard(totalQuota(for: profile))
             messagesCard(profile.messageStats)
         }
     }
 
     private func quotaCard(_ quota: ImageReadingQuota?) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Image(systemName: "photo").font(.title3).foregroundStyle(theme.accent)
-            Text(quota.map { "\($0.usage)/\($0.limit)" } ?? "—")
-                .font(.title2.bold().monospacedDigit()).lineLimit(1).minimumScaleFactor(0.65)
-            Text("图片读取").font(.subheadline).foregroundStyle(.secondary)
-            if let quota {
-                ProgressView(value: quota.fractionUsed).tint(theme.accent)
-                    .accessibilityLabel("图片读取额度")
-                    .accessibilityValue("已读取 \(quota.usage) 页，共 \(quota.limit) 页")
-                TimelineView(.periodic(from: .now, by: 60)) { context in
-                    Text(resetDescription(at: quota.resetAt, now: context.date)).font(.caption).foregroundStyle(.secondary)
+        Button(action: { imageSheet = .quotas }) {
+            VStack(alignment: .leading, spacing: 8) {
+                Image(systemName: "photo").font(.title3).foregroundStyle(theme.accent)
+                Text(quota.map { "\($0.usage)/\($0.limit)" } ?? "—")
+                    .font(.title2.bold().monospacedDigit()).lineLimit(1).minimumScaleFactor(0.65)
+                Text("图片读取").font(.subheadline).foregroundStyle(.secondary)
+                if let quota {
+                    ProgressView(value: quota.fractionUsed).tint(theme.accent).accessibilityHidden(true)
+                    ImageQuotaResetText(date: quota.resetAt)
+                } else if loading || model.loadingQuota {
+                    ProgressView().controlSize(.small)
                 }
-                if model.quotaRefreshFailed {
-                    Text("显示上次读取的额度").font(.caption).foregroundStyle(.secondary)
-                }
-            } else if loading || model.loadingQuota {
-                ProgressView().controlSize(.small)
-            } else {
-                Button("重新查询额度") { Task { await model.load(refreshQuota: true) } }
-                    .font(.caption)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).padding(16).komiicCard()
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).padding(16).komiicCard()
+        .buttonStyle(.plain)
+        .accessibilityLabel("图片读取")
+        .accessibilityValue(quota.map { "已读取 \($0.usage) 页，共 \($0.limit) 页" } ?? "—")
+    }
+
+    private func totalQuota(for profile: KomiicAccountProfile) -> ImageReadingQuota? {
+        let secondary = ImageAccountSlot.allCases.compactMap { slot in
+            imageSources.status(for: slot, mode: settings.contentMode, ownerID: profile.id).quota
+        }
+        return ImageReadingQuota.combined([profile.imageQuota].compactMap { $0 } + secondary)
+    }
+
+    private func openImageAccounts() {
+        if model.imageSourceAccount != nil { imageSheet = .accounts }
     }
 
     private func messagesCard(_ stats: AccountMessageStats?) -> some View {
@@ -254,6 +279,13 @@ private struct AccountContentView: View {
         }
     }
 
+    @MainActor private func loadDashboard(force: Bool = true) async {
+        let mode = settings.contentMode
+        async let secondary: Void = imageSources.refresh(mode: mode)
+        await loadProfile(force: force)
+        await secondary
+    }
+
     @MainActor private func loadProfile(force: Bool = true) async {
         guard force || !model.hasLoaded else {
             await model.load(refreshQuota: true)
@@ -274,14 +306,6 @@ private struct AccountContentView: View {
         website = WebDestination(path: path, title: title, mode: settings.contentMode)
     }
 
-    private func resetDescription(at date: Date, now: Date) -> String {
-        let seconds = date.timeIntervalSince(now)
-        guard seconds > 0 else { return "额度待刷新" }
-        let minutes = Int(seconds / 60)
-        if minutes == 0 { return "额度即将重置" }
-        let hours = minutes / 60
-        return hours > 0 ? "\(hours) 小时 \(minutes % 60) 分钟后重置" : "\(minutes) 分钟后重置"
-    }
 }
 
 struct BlockedComicsView: View {

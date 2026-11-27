@@ -33,6 +33,7 @@ struct RootView: View {
     @EnvironmentObject private var content: AppContentStore
     @EnvironmentObject private var library: LibraryStore
     @EnvironmentObject private var downloads: DownloadStore
+    @EnvironmentObject private var imageSources: ImageSourceStore
     @EnvironmentObject private var settings: ReaderSettings
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.komiicTheme) private var theme
@@ -53,6 +54,7 @@ struct RootView: View {
                 .environmentObject(content)
                 .environmentObject(library)
                 .environmentObject(downloads)
+                .environmentObject(imageSources)
                 .environmentObject(settings)
                 .environment(\.scenePhase, scenePhase)
                 .environment(\.komiicTheme, theme)

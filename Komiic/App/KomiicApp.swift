@@ -21,14 +21,22 @@ struct KomiicApp: App {
 @MainActor
 private struct AppContainerView: View {
     @StateObject private var library: LibraryStore
-    @StateObject private var downloads = DownloadStore()
-    @StateObject private var content = AppContentStore()
+    @StateObject private var downloads: DownloadStore
+    @StateObject private var content: AppContentStore
+    @StateObject private var imageSources: ImageSourceStore
     @StateObject private var settings: ReaderSettings
 
     init() {
         SessionCookieStore.shared.restore()
         let settings = ReaderSettings()
+        let content = AppContentStore()
+        let imageSources = ImageSourceStore(primary: { mode in content.account(mode: mode).imageSourceAccount })
         _settings = StateObject(wrappedValue: settings)
+        _content = StateObject(wrappedValue: content)
+        _imageSources = StateObject(wrappedValue: imageSources)
+        _downloads = StateObject(wrappedValue: DownloadStore(imageLoader: { page, url in
+            try await imageSources.imageData(for: page, baseURL: url)
+        }))
         _library = StateObject(wrappedValue: LibraryStore(initialMode: settings.contentMode))
     }
 
@@ -39,6 +47,7 @@ private struct AppContainerView: View {
             .environmentObject(downloads)
             .environmentObject(settings)
             .environmentObject(content)
+            .environmentObject(imageSources)
             .environment(\.komiicTheme, theme)
             .tint(theme.accent)
             .preferredColorScheme(settings.theme.colorScheme)

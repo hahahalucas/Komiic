@@ -11,27 +11,28 @@ struct SessionPersistence {
     var save: (Data) -> Void
     var remove: () -> Void
 
-    static let keychain = SessionPersistence(load: {
-        var query = SessionPersistence.keychainQuery
-        query[kSecReturnData as String] = true
-        query[kSecMatchLimit as String] = kSecMatchLimitOne
-        var result: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess else { return nil }
-        return result as? Data
-    }, save: { data in
-        let attributes: [String: Any] = [kSecValueData as String: data]
-        let status = SecItemUpdate(SessionPersistence.keychainQuery as CFDictionary, attributes as CFDictionary)
-        if status == errSecItemNotFound {
-            var item = SessionPersistence.keychainQuery
-            item[kSecValueData as String] = data
-            item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-            _ = SecItemAdd(item as CFDictionary, nil)
-        }
-    }, remove: { _ = SecItemDelete(SessionPersistence.keychainQuery as CFDictionary) })
+    static let keychain = keychain(account: "official-cookies")
 
-    private static var keychainQuery: [String: Any] {
-        [kSecClass as String: kSecClassGenericPassword,
-         kSecAttrService as String: "Komiic.session.v1", kSecAttrAccount as String: "official-cookies"]
+    static func keychain(account: String) -> SessionPersistence {
+        let itemQuery: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "Komiic.session.v1", kSecAttrAccount as String: account]
+        return SessionPersistence(load: {
+            var query = itemQuery
+            query[kSecReturnData as String] = true
+            query[kSecMatchLimit as String] = kSecMatchLimitOne
+            var result: CFTypeRef?
+            guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess else { return nil }
+            return result as? Data
+        }, save: { data in
+            let attributes: [String: Any] = [kSecValueData as String: data]
+            let status = SecItemUpdate(itemQuery as CFDictionary, attributes as CFDictionary)
+            if status == errSecItemNotFound {
+                var item = itemQuery
+                item[kSecValueData as String] = data
+                item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+                _ = SecItemAdd(item as CFDictionary, nil)
+            }
+        }, remove: { _ = SecItemDelete(itemQuery as CFDictionary) })
     }
 }
 
@@ -130,12 +131,15 @@ final class SessionCookieStore: @unchecked Sendable {
         cookie.domain == "komiic.cc" || cookie.domain.hasSuffix(".komiic.cc")
     }
     static func credentialSignature(_ cookies: [HTTPCookie], mode: ComicContentMode) -> String {
-        let rows = cookies.filter { matches($0, mode: mode) && isCredential($0) }
+        let rows = credentialCookies(cookies, mode: mode)
             .map { "\($0.domain)|\($0.path)|\($0.name)|\($0.value)" }.sorted().joined(separator: "\n")
         return SHA256.hash(data: Data(rows.utf8)).map { String(format: "%02x", $0) }.joined()
     }
+    static func credentialCookies(_ cookies: [HTTPCookie], mode: ComicContentMode) -> [HTTPCookie] {
+        cookies.filter { matches($0, mode: mode) && isCredential($0) }
+    }
     private static func hasCredentials(_ cookies: [HTTPCookie], for mode: ComicContentMode) -> Bool {
-        cookies.contains { matches($0, mode: mode) && isCredential($0) && ($0.expiresDate == nil || $0.expiresDate! > Date()) }
+        credentialCookies(cookies, mode: mode).contains { ($0.expiresDate ?? .distantFuture) > Date() }
     }
     private static func isCredential(_ cookie: HTTPCookie) -> Bool {
         ["komiic-access-token", "komiic-refresh-token"].contains(cookie.name)

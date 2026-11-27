@@ -76,6 +76,11 @@ final class AccountProfileModel: ObservableObject {
     private let sessionScope: () -> String?
     private var cachedScope: String?
 
+    var imageSourceAccount: (owner: ImageSourceOwner, quota: ImageReadingQuota?)? {
+        guard let profile, let cachedScope, sessionScope() == cachedScope else { return nil }
+        return (ImageSourceOwner(id: profile.id, sessionScope: cachedScope), profile.imageQuota)
+    }
+
     convenience init(mode: ComicContentMode, fetchProfile: (() async throws -> KomiicAccountProfile?)? = nil) {
         self.init(mode: mode, snapshots: nil, sessionScope: { nil }, fetchProfile: fetchProfile)
     }

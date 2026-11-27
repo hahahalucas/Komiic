@@ -4,6 +4,7 @@ enum KomiicError: LocalizedError {
     case invalidResponse
     case http(Int)
     case authenticationRequired
+    case imageAccountExpired
     case imageQuotaExceeded
     case rateLimited
     case graphQL(String)
@@ -15,6 +16,7 @@ enum KomiicError: LocalizedError {
         case .invalidResponse: return "Komiic 返回了无法识别的数据，请重试或在官网检查连接。"
         case .http(let status): return "连接 Komiic 失败（HTTP \(status)）。"
         case .authenticationRequired: return "请先在账号页登录 Komiic，或重新登录以更新会话。"
+        case .imageAccountExpired: return "请重新登录图片账号。"
         case .imageQuotaExceeded: return "Komiic 官网的图片读取额度已用完。已下载和仍在缓存中的图片可继续阅读。在线加载新图片请在额度重置后重试。"
         case .rateLimited: return "请求过于频繁，请稍后重试。"
         case .graphQL(let message): return message
@@ -32,6 +34,8 @@ struct KomiicAPI: Sendable {
     let mode: ComicContentMode
     private let session: URLSession
     private let imageSession: URLSession
+    private let refreshCoordinator: SessionRefreshCoordinator
+    private let isolatedCookies: Bool
 
     private static let apiSession: URLSession = {
         let configuration = URLSessionConfiguration.default
@@ -61,6 +65,19 @@ struct KomiicAPI: Sendable {
         self.baseURL = baseURL ?? mode.baseURL
         self.session = session ?? Self.apiSession
         self.imageSession = imageSession ?? Self.ticketImageSession
+        refreshCoordinator = .shared
+        isolatedCookies = false
+    }
+
+    init(mode: ComicContentMode, imageAccountSession: URLSession, imageSession: URLSession? = nil) {
+        precondition(imageAccountSession.configuration.httpCookieStorage != nil &&
+                     imageAccountSession.configuration.httpCookieStorage !== HTTPCookieStorage.shared)
+        self.mode = mode
+        baseURL = mode.baseURL
+        session = imageAccountSession
+        self.imageSession = imageSession ?? Self.ticketImageSession
+        refreshCoordinator = SessionRefreshCoordinator()
+        isolatedCookies = true
     }
 
     /// Hold refreshes while both WebKit and native cookies are being removed.
@@ -229,13 +246,19 @@ struct KomiicAPI: Sendable {
     }
 
     func imageReadingQuota(accountID: String) async throws -> ImageReadingQuota {
+        let result = try await imageReadingAccount()
+        guard result.id == accountID else { throw KomiicError.authenticationRequired }
+        return result.quota
+    }
+
+    func imageReadingAccount() async throws -> (id: String, quota: ImageReadingQuota) {
         // The quota field alone can return a visitor's allowance after a session expires.
         let data: ImageLimitResult = try await perform("getImageLimit", query:
             "query getImageLimit { account { id } getImageLimit { limit usage resetInSeconds } }", variables: [:])
-        guard data.account?.id == accountID else { throw KomiicError.authenticationRequired }
+        guard let id = data.account?.id, !id.isEmpty else { throw KomiicError.authenticationRequired }
         let quota = data.getImageLimit
-        return ImageReadingQuota(usage: quota.usage, limit: quota.limit,
-                                 resetAt: Date().addingTimeInterval(quota.resetInSeconds))
+        return (id, ImageReadingQuota(usage: quota.usage, limit: quota.limit,
+                                      resetAt: Date().addingTimeInterval(quota.resetInSeconds)))
     }
 
     func accountMessageStats() async throws -> AccountMessageStats {
@@ -362,20 +385,23 @@ struct KomiicAPI: Sendable {
         try Task.checkCancellation()
         try await refreshSessionIfNeeded()
         var request = request(path: "api/query")
-        let cookieGeneration = SessionCookieStore.shared.generation
+        let cookieGeneration = session === Self.apiSession ? SessionCookieStore.shared.generation : nil
         request.httpBody = try JSONSerialization.data(withJSONObject: ["operationName": operation, "query": query, "variables": variables])
         let (data, response) = try await session.data(for: request)
-        if session === Self.apiSession { SessionCookieStore.shared.capture(generation: cookieGeneration) }
+        if let cookieGeneration { SessionCookieStore.shared.capture(generation: cookieGeneration) }
         guard let http = response as? HTTPURLResponse else { throw KomiicError.invalidResponse }
+        if isolatedCookies, http.statusCode == 401 { throw KomiicError.imageAccountExpired }
         try Self.checkStatus(http.statusCode)
         let decoder = JSONDecoder()
         // Inspect errors first: nullable partial GraphQL data may not match the success type.
         if let error = (try? decoder.decode(GraphQLProblems.self, from: data))?.errors?.first {
             // The current official service uses this message without an extensions code.
-            if error.message.lowercased() == "no token" { throw KomiicError.authenticationRequired }
+            if error.message.lowercased() == "no token" || error.extensions?.code == "UNAUTHENTICATED" {
+                throw isolatedCookies ? KomiicError.imageAccountExpired : KomiicError.authenticationRequired
+            }
             switch error.extensions?.code {
             case "QUOTA_EXCEEDED": throw KomiicError.imageQuotaExceeded
-            case "UNAUTHENTICATED", "FORBIDDEN": throw KomiicError.authenticationRequired
+            case "FORBIDDEN": throw KomiicError.authenticationRequired
             default: throw KomiicError.graphQL(error.message)
             }
         }
@@ -400,9 +426,20 @@ struct KomiicAPI: Sendable {
     }
 
     private func refreshSessionIfNeeded() async throws {
-        try await SessionRefreshCoordinator.shared.refreshIfNeeded(
-            baseURL: baseURL, session: session, request: request(path: "auth/refresh"), persistCookies: session === Self.apiSession
-        )
+        do {
+            try await refreshCoordinator.refreshIfNeeded(
+                baseURL: baseURL, session: session, request: request(path: "auth/refresh"),
+                persistCookies: session === Self.apiSession, isolatedCookies: isolatedCookies
+            )
+        } catch KomiicError.authenticationRequired where isolatedCookies {
+            throw KomiicError.imageAccountExpired
+        }
+        if isolatedCookies {
+            let cookies = session.configuration.httpCookieStorage?.cookies(for: baseURL) ?? []
+            guard cookies.contains(where: { $0.name == "komiic-access-token" && ($0.expiresDate ?? .distantFuture) > Date() }) else {
+                throw KomiicError.imageAccountExpired
+            }
+        }
     }
 
     private func normalized(_ comic: Comic) -> Comic {
@@ -457,31 +494,33 @@ private actor SessionRefreshCoordinator {
         clearingSessions = max(0, clearingSessions - 1)
     }
 
-    func refreshIfNeeded(baseURL: URL, session: URLSession, request: URLRequest, persistCookies: Bool) async throws {
+    func refreshIfNeeded(baseURL: URL, session: URLSession, request: URLRequest,
+                         persistCookies: Bool, isolatedCookies: Bool) async throws {
         guard clearingSessions == 0 else { throw KomiicError.authenticationRequired }
         let key = "\(baseURL.scheme ?? "https")://\(baseURL.host ?? ""):\(baseURL.port ?? 443)"
         if let pending = inFlight[key] {
             try await pending.value
             return
         }
-        guard Self.needsRefresh(baseURL) else { return }
+        guard Self.needsRefresh(baseURL, session: session, isolatedCookies: isolatedCookies) else { return }
         let refresh = Task<Void, Error> {
             // Cookies may have changed while this actor/task was waiting for execution.
-            guard Self.needsRefresh(baseURL) else { return }
-            let cookieGeneration = SessionCookieStore.shared.generation
+            guard Self.needsRefresh(baseURL, session: session, isolatedCookies: isolatedCookies) else { return }
+            let cookieGeneration = persistCookies ? SessionCookieStore.shared.generation : nil
             let (_, response) = try await session.data(for: request)
             try Task.checkCancellation()
             guard let http = response as? HTTPURLResponse else { throw KomiicError.invalidResponse }
             try KomiicAPI.checkStatus(http.statusCode)
-            if persistCookies { SessionCookieStore.shared.capture(generation: cookieGeneration) }
+            if let cookieGeneration { SessionCookieStore.shared.capture(generation: cookieGeneration) }
         }
         inFlight[key] = refresh
         defer { inFlight.removeValue(forKey: key) }
         try await refresh.value
     }
 
-    private static func needsRefresh(_ baseURL: URL) -> Bool {
-        let cookies = HTTPCookieStorage.shared.cookies(for: baseURL) ?? []
+    private static func needsRefresh(_ baseURL: URL, session: URLSession, isolatedCookies: Bool) -> Bool {
+        let storage = isolatedCookies ? session.configuration.httpCookieStorage : HTTPCookieStorage.shared
+        let cookies = storage?.cookies(for: baseURL) ?? []
         guard let token = cookies.first(where: { $0.name == "komiic-access-token" })?.value else {
             return cookies.contains { $0.name == "komiic-refresh-token" }
         }
