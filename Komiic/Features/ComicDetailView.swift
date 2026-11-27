@@ -255,7 +255,7 @@ struct ComicDetailView: View {
         let read = library.isChapterRead(chapter.id)
         return Button {
             let progress = library.progress(for: comic.id)
-            read(chapter, page: progress?.chapter.id == chapter.id ? progress?.page ?? 0 : 0)
+            openChapter(chapter, page: progress?.chapter.id == chapter.id ? progress?.page ?? 0 : 0)
         } label: {
             VStack(spacing: 5) {
                 Text(chapter.serial.isEmpty ? chapter.displayTitle : chapter.serial)
@@ -284,12 +284,12 @@ struct ComicDetailView: View {
     }
     private func startReading() {
         if let progress = library.progress(for: comic.id) {
-            read(progress.chapter, page: progress.page)
+            openChapter(progress.chapter, page: progress.page)
         } else if let chapter = chapters.first(where: { $0.type == chapterType }) ?? chapters.first {
-            read(chapter)
+            openChapter(chapter)
         }
     }
-    private func read(_ chapter: Chapter, page: Int = 0) {
+    private func openChapter(_ chapter: Chapter, page: Int = 0) {
         openReader(ReaderLaunch(comic: displayedComic, chapter: chapter, page: page,
                                 chapterDirectory: chapters, onDismiss: { _ in resetDirectory() }))
     }

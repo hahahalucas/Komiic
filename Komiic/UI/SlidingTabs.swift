@@ -25,6 +25,11 @@ final class AppPagerPosition {
     var catalogProgress: CGFloat { min(progress, CGFloat(CatalogPage.allCases.count - 1)) }
     var tabProgress: CGFloat { progress - catalogProgress }
     var homeOpacity: Double { opacity(for: .home) }
+    var settledPage: AppPage? {
+        let index = progress.rounded()
+        guard abs(progress - index) < 0.01 else { return nil }
+        return AppPage.ordered[Int(index)]
+    }
 
     func opacity(for tab: AppTab) -> Double {
         max(0, 1 - Double(abs(tabProgress - CGFloat(tab.index))))
@@ -90,10 +95,8 @@ struct SlidingTabs<Screen: View>: View {
     }
 
     private func reportSettledPage() {
-        let index = position.progress.rounded()
         // A canceled drag settles on the original page. The scroll target can change before that.
-        guard abs(position.progress - index) < 0.01 else { return }
-        didSettle(AppPage.ordered[Int(index)])
+        if let page = position.settledPage { didSettle(page) }
     }
 
     private enum PagerSpace { case pages }

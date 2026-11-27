@@ -135,6 +135,7 @@ struct RootView: View {
             }
             if phase == .active {
                 restoreReaderIfNeeded()
+                if let page = pagerPosition.settledPage { didSettle(page) }
                 if previous != .active {
                     Task { await library.retryPendingOfficialChanges() }
                     downloads.applyCachePolicy(settings.cachePolicy)
